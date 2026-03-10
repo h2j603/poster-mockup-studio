@@ -748,6 +748,20 @@
             <input type="file" id="bgimg-file" accept="image/*">
           </div>
         </div>
+        <div class="field">
+          <label>화면 맞춤</label>
+          <div class="pill-group">
+            <button class="pill-btn active" onclick="setBgFit('cover',this)">꽉 채우기</button>
+            <button class="pill-btn" onclick="setBgFit('contain',this)">전체 보기</button>
+            <button class="pill-btn" onclick="setBgFit('fit-w',this)">가로 맞춤</button>
+            <button class="pill-btn" onclick="setBgFit('fit-h',this)">세로 맞춤</button>
+            <button class="pill-btn" onclick="setBgFit('stretch',this)">늘이기</button>
+          </div>
+        </div>
+        <div class="field" id="bg-fit-color-row" style="display:none">
+          <label>여백 색상</label>
+          <input type="color" id="bg-fit-color" value="#000000" oninput="applyBgFit()">
+        </div>
       </div>
 
       <!-- 동영상 패널 -->
@@ -758,6 +772,16 @@
             <div>동영상 업로드</div>
             <div style="font-size:10px;margin-top:4px;color:#bbb">MP4 · WEBM</div>
             <input type="file" id="bgvid-file" accept="video/*">
+          </div>
+        </div>
+        <div class="field">
+          <label>화면 맞춤</label>
+          <div class="pill-group">
+            <button class="pill-btn active" onclick="setBgFit('cover',this)">꽉 채우기</button>
+            <button class="pill-btn" onclick="setBgFit('contain',this)">전체 보기</button>
+            <button class="pill-btn" onclick="setBgFit('fit-w',this)">가로 맞춤</button>
+            <button class="pill-btn" onclick="setBgFit('fit-h',this)">세로 맞춤</button>
+            <button class="pill-btn" onclick="setBgFit('stretch',this)">늘이기</button>
           </div>
         </div>
       </div>
@@ -1000,6 +1024,8 @@ function defaultPosterParams() {
 // ==========================================
 let camera, scene, renderer;
 let bgMesh, bgMat;
+let bgCurrentTexture = null; // 현재 배경 텍스처 참조
+let bgFitMode = 'cover';     // 배경 맞춤 모드
 let dirLight, ambientLight;
 let clock;
 let videoElement = null;
@@ -1659,6 +1685,92 @@ function updateBgSolid(hex) {
   scene.background = new THREE.Color(hex);
 }
 
+// ─────────────────────────────────────────────
+// 배경 맞춤 모드
+// ─────────────────────────────────────────────
+function setBgFit(mode, btn) {
+  bgFitMode = mode;
+  // 활성 pill 갱신 (같은 pill-group 안에서만)
+  if (btn) {
+    btn.closest('.pill-group').querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  // 여백 색상 행: contain 모드에서만 표시
+  const colorRow = document.getElementById('bg-fit-color-row');
+  if (colorRow) colorRow.style.display = mode === 'contain' ? '' : 'none';
+  applyBgFit();
+}
+
+function applyBgFit() {
+  const tex = bgCurrentTexture;
+  if (!tex || !bgMesh.visible) return;
+
+  // 카메라 시야 내 가시 크기 계산 (bgMesh z 기준)
+  const dist = camera.position.z - bgMesh.position.z; // 5 - (-3) = 8
+  const halfH = dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const visH  = halfH * 2;
+  const visW  = visH * camera.aspect;
+
+  // 텍스처 원본 비율 (비디오/이미지 공용)
+  const img = tex.image;
+  const tw  = img ? (img.videoWidth  || img.naturalWidth  || img.width  || 1) : 1;
+  const th  = img ? (img.videoHeight || img.naturalHeight || img.height || 1) : 1;
+  const texAspect = tw / th;
+  const canAspect = visW / visH; // = camera.aspect
+
+  // 텍스처 repeat/offset 초기화
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.repeat.set(1, 1);
+  tex.offset.set(0, 0);
+
+  // bgMesh 지오메트리를 가시 크기로 리셋
+  bgMesh.geometry.dispose();
+  bgMesh.geometry = new THREE.PlaneGeometry(visW, visH);
+  // scene.background 리셋
+  scene.background = null;
+
+  if (bgFitMode === 'cover') {
+    // 꽉 채우기: 비율 유지, 넘치면 잘라냄
+    if (texAspect > canAspect) {
+      const r = canAspect / texAspect;
+      tex.repeat.set(r, 1);
+      tex.offset.set((1 - r) / 2, 0);
+    } else {
+      const r = texAspect / canAspect;
+      tex.repeat.set(1, r);
+      tex.offset.set(0, (1 - r) / 2);
+    }
+
+  } else if (bgFitMode === 'contain') {
+    // 전체 보기: 비율 유지, 여백 발생
+    const fitColor = document.getElementById('bg-fit-color')?.value || '#000000';
+    scene.background = new THREE.Color(fitColor);
+    if (texAspect > canAspect) {
+      // 너비 맞춤, 위아래 여백
+      bgMesh.geometry.dispose();
+      bgMesh.geometry = new THREE.PlaneGeometry(visW, visW / texAspect);
+    } else {
+      // 높이 맞춤, 좌우 여백
+      bgMesh.geometry.dispose();
+      bgMesh.geometry = new THREE.PlaneGeometry(visH * texAspect, visH);
+    }
+
+  } else if (bgFitMode === 'fit-w') {
+    // 가로 맞춤: 너비 = 캔버스 너비, 높이 비율
+    bgMesh.geometry.dispose();
+    bgMesh.geometry = new THREE.PlaneGeometry(visW, visW / texAspect);
+
+  } else if (bgFitMode === 'fit-h') {
+    // 세로 맞춤: 높이 = 캔버스 높이, 너비 비율
+    bgMesh.geometry.dispose();
+    bgMesh.geometry = new THREE.PlaneGeometry(visH * texAspect, visH);
+
+  }
+  // 'stretch' 는 기본값 그대로 (visW × visH 에 텍스처 1:1 매핑)
+
+  tex.needsUpdate = true;
+}
+
 function updateBgGradient() {
   const c1    = document.getElementById('grad-color1').value;
   const c2    = document.getElementById('grad-color2').value;
@@ -1722,6 +1834,8 @@ function loadBgImage(file) {
     bgMat.color.set(0xffffff);
     bgMat.needsUpdate = true;
     bgMesh.visible = true;
+    bgCurrentTexture = tex;
+    applyBgFit();
 
     const drop = document.getElementById('bgimg-drop');
     drop.classList.add('uploaded');
@@ -1769,6 +1883,10 @@ function loadBgVideo(file) {
   bgMat.color.set(0xffffff);
   bgMat.needsUpdate = true;
   bgMesh.visible = true;
+  bgCurrentTexture = tex;
+
+  // 비디오는 메타데이터 로드 후 fit 적용
+  videoElement.addEventListener('loadedmetadata', () => applyBgFit(), { once: true });
 
   const drop = document.getElementById('bgvid-drop');
   drop.classList.add('uploaded');
