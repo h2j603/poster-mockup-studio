@@ -191,6 +191,19 @@
       outline: none;
     }
 
+    /* number input */
+    input[type="number"] {
+      width: 100%;
+      padding: 6px 8px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      font-family: 'Noto Sans KR', sans-serif;
+      font-size: 12px;
+      color: var(--text);
+      outline: none;
+    }
+
     /* ===== 드롭존 ===== */
     .dropzone {
       border: 1.5px dashed var(--input-border);
@@ -460,6 +473,127 @@
       background: var(--panel-border);
       margin: 2px 0;
     }
+
+    /* ===== 포스터 목록 카드 ===== */
+    #poster-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .poster-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 8px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .poster-card.active {
+      border-color: var(--accent);
+      background: #e8e8e8;
+      font-weight: 500;
+    }
+
+    .poster-card-btns {
+      display: flex;
+      gap: 4px;
+    }
+
+    .poster-card-btns button {
+      padding: 2px 7px;
+      font-size: 10px;
+      background: transparent;
+      border: 1px solid var(--panel-border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: var(--text-muted);
+      transition: background 0.12s;
+    }
+
+    .poster-card-btns button:hover {
+      background: var(--btn-hover);
+    }
+
+    .poster-card-btns .del-btn {
+      border-color: #ffaaaa;
+      color: #c00;
+    }
+
+    .poster-card-btns .del-btn:hover {
+      background: #ffd5d5;
+    }
+
+    /* ===== XY 패드 ===== */
+    .xy-pad {
+      width: 100px;
+      height: 100px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      position: relative;
+      cursor: crosshair;
+      flex-shrink: 0;
+    }
+
+    .xy-pad-dot {
+      width: 10px;
+      height: 10px;
+      background: var(--accent);
+      border-radius: 50%;
+      position: absolute;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    .xy-pad-crosshair {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .xy-pad-crosshair::before,
+    .xy-pad-crosshair::after {
+      content: '';
+      position: absolute;
+      background: var(--panel-border);
+    }
+
+    .xy-pad-crosshair::before {
+      width: 1px;
+      height: 100%;
+      left: 50%;
+    }
+
+    .xy-pad-crosshair::after {
+      height: 1px;
+      width: 100%;
+      top: 50%;
+    }
+
+    /* 캔버스 크기 입력 행 */
+    .canvas-size-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .canvas-size-row input[type="number"] {
+      width: 72px;
+      flex-shrink: 0;
+    }
+
+    .canvas-size-row span {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
   </style>
 </head>
 <body>
@@ -474,6 +608,15 @@
       포스터 <span class="arrow">▾</span>
     </div>
     <div class="section-body">
+
+      <!-- 포스터 목록 -->
+      <div class="field">
+        <label>포스터 목록</label>
+        <div id="poster-list"></div>
+        <button class="btn" style="margin-top:4px;" onclick="addPoster()">+ 포스터 추가</button>
+      </div>
+
+      <div class="divider"></div>
 
       <!-- 이미지 업로드 -->
       <div class="field">
@@ -524,6 +667,16 @@
           <input type="range" id="tilt-y" min="-40" max="40" step="0.5" value="0"
             oninput="updateSliderDisplay(this,'tilt-y-val'); updateTilt()">
           <span class="value-display" id="tilt-y-val">0°</span>
+        </div>
+      </div>
+
+      <!-- 기울기 Z -->
+      <div class="field">
+        <label>기울기 Z</label>
+        <div class="field-row">
+          <input type="range" id="tilt-z" min="-40" max="40" step="0.5" value="0"
+            oninput="updateSliderDisplay(this,'tilt-z-val'); updateTilt()">
+          <span class="value-display" id="tilt-z-val">0°</span>
         </div>
       </div>
 
@@ -649,6 +802,23 @@
             <span class="value-display" id="wind-spd-val">1.00</span>
           </div>
         </div>
+        <!-- 바람 방향 XY 패드 -->
+        <div class="field">
+          <label>바람 방향 (원점에서 멀수록 강함)</label>
+          <div style="display:flex;gap:10px;align-items:flex-start;margin-top:2px;">
+            <div class="xy-pad" id="wind-xy-pad">
+              <div class="xy-pad-crosshair"></div>
+              <div class="xy-pad-dot" id="wind-xy-dot"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--text-muted);">
+              <div>X: <span id="wind-ox-val">0.00</span></div>
+              <div>Y: <span id="wind-oy-val">0.50</span></div>
+              <div style="margin-top:4px;line-height:1.4;">
+                좌측 가장자리가<br>기본 원점입니다
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 원통 모드 파라미터 -->
@@ -739,6 +909,34 @@
     </div>
   </div>
 
+  <!-- 캔버스 크기 섹션 -->
+  <div class="section" id="sec-canvas">
+    <div class="section-header" onclick="toggleSection('sec-canvas')">
+      캔버스 <span class="arrow">▾</span>
+    </div>
+    <div class="section-body">
+      <div class="field">
+        <label>너비</label>
+        <div class="canvas-size-row">
+          <input type="number" id="canvas-width" min="400" max="2000" value="900">
+          <span>px</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>높이</label>
+        <div class="canvas-size-row">
+          <input type="number" id="canvas-height" min="300" max="1500" value="600">
+          <span>px</span>
+        </div>
+      </div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="canvas-ratio-lock" checked>
+        가로세로 비율 잠금
+      </label>
+      <button class="btn" onclick="applyCanvasSize()">적용</button>
+    </div>
+  </div>
+
 </aside>
 
 <!-- ===== 캔버스 영역 ===== -->
@@ -767,53 +965,69 @@ const state = {
   windStrength: 0.05,
   windSpeed: 1.0,
   cylAmount: 0.4,
-  posterScale: 1.0,
-  tiltX: 0,
-  tiltY: 0,
   shadowStrength: 0.5,
-  posterW: 2.0,          // Three.js 단위
-  posterH: 2.0 * Math.SQRT2,
-  geometryNeedsUpdate: false,
   isRecording: false,
   mediaRecorder: null,
   recordedChunks: [],
+  // 바람 원점 (normalized 0~1)
+  windOriginX: 0.0,
+  windOriginY: 0.5,
+  // 캔버스 크기
+  canvasW: 900,
+  canvasH: 600,
 };
+
+// ==========================================
+// 포스터 다중 관리
+// ==========================================
+let posters = [];          // { mesh, originalPositions, params: {...} }
+let activePosterIndex = 0; // 현재 선택된 포스터 인덱스
+
+// 기본 포스터 파라미터 팩토리
+function defaultPosterParams() {
+  return {
+    scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0,
+    tiltX: 0, tiltY: 0, tiltZ: 0,
+    posX: 0, posY: 0, posZ: 0,
+    posterW: 2.0,
+    posterH: 2.0 * Math.SQRT2,
+    shadowStrength: 0.5,
+  };
+}
 
 // ==========================================
 // Three.js 씬 초기화
 // ==========================================
 let camera, scene, renderer;
-let posterMesh, posterGeo, posterMat;
-let shadowMesh, shadowMat;
 let bgMesh, bgMat;
 let dirLight, ambientLight;
-let originalPositions = null;
 let clock;
-let videoElement = null; // 배경 동영상 엘리먼트
-let currentPosterTexture = null; // 현재 포스터 텍스처 (프리셋 변경 후 유지용)
+let videoElement = null;
+
+// 레이캐스터 (드래그 감지용)
+let raycaster, mouse;
+let isDragging = false;
+let dragPosterIndex = -1;
+let dragStartX = 0, dragStartY = 0;
+let isAltDrag = false;
+
+// 그림자 메시 배열 (포스터별)
+let shadowMeshes = [];
+let shadowMat;
 
 function initThree() {
   const canvas = document.getElementById('three-canvas');
-  const card = document.getElementById('canvas-card');
+  const card   = document.getElementById('canvas-card');
 
   // 렌더러
   renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
-    preserveDrawingBuffer: true  // 스크린샷을 위해 필요
+    preserveDrawingBuffer: true,
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-  // 렌더러 크기를 카드에 맞춤
-  function resizeRenderer() {
-    const w = card.clientWidth;
-    const h = card.clientHeight;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  }
 
   // 씬
   scene = new THREE.Scene();
@@ -826,117 +1040,264 @@ function initThree() {
   // 시계
   clock = new THREE.Clock();
 
+  // 레이캐스터
+  raycaster = new THREE.Raycaster();
+  mouse = new THREE.Vector2();
+
   // ─── 조명 ───
   ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
   scene.add(ambientLight);
 
   dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
   dirLight.castShadow = true;
-  dirLight.shadow.mapSize.width = 2048;
+  dirLight.shadow.mapSize.width  = 2048;
   dirLight.shadow.mapSize.height = 2048;
-  dirLight.shadow.camera.near = 0.1;
-  dirLight.shadow.camera.far = 30;
-  dirLight.shadow.camera.left = -5;
-  dirLight.shadow.camera.right = 5;
-  dirLight.shadow.camera.top = 5;
+  dirLight.shadow.camera.near   = 0.1;
+  dirLight.shadow.camera.far    = 30;
+  dirLight.shadow.camera.left   = -5;
+  dirLight.shadow.camera.right  = 5;
+  dirLight.shadow.camera.top    = 5;
   dirLight.shadow.camera.bottom = -5;
   dirLight.shadow.bias = -0.001;
   scene.add(dirLight);
 
-  updateLighting(); // 초기 조명 위치 설정
+  updateLighting();
 
   // ─── 배경 평면 ───
   const bgGeo = new THREE.PlaneGeometry(30, 20);
-  bgMat = new THREE.MeshBasicMaterial({ color: 0xf0f0f0 });
+  bgMat  = new THREE.MeshBasicMaterial({ color: 0xf0f0f0 });
   bgMesh = new THREE.Mesh(bgGeo, bgMat);
   bgMesh.position.z = -3;
-  bgMesh.visible = false; // 기본은 숨김 (단색 모드가 기본)
+  bgMesh.visible = false;
   scene.add(bgMesh);
 
-  // ─── 포스터 메시 ───
-  buildPosterMesh();
-
-  // ─── 그림자 평면 ───
-  const shadowGeo = new THREE.PlaneGeometry(state.posterW * 1.5, state.posterH * 1.5);
+  // ─── 그림자 머티리얼 (공통) ───
   shadowMat = new THREE.ShadowMaterial({ opacity: 0.5 });
-  shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
-  shadowMesh.receiveShadow = true;
-  shadowMesh.position.z = -0.02;
-  scene.add(shadowMesh);
 
-  resizeRenderer();
-  window.addEventListener('resize', resizeRenderer);
+  // ─── 첫 번째 포스터 생성 ───
+  addPoster(true);
+
+  // 렌더러 크기 맞춤
+  resizeRendererToCard();
+  window.addEventListener('resize', resizeRendererToCard);
+
+  // 드래그 이벤트 등록
+  setupDragInteraction();
 
   // 애니메이션 루프 시작
   animate();
 }
 
-// 포스터 메시 빌드 (프리셋 변경 시 재빌드)
-function buildPosterMesh() {
-  if (posterMesh) {
-    scene.remove(posterMesh);
-    posterGeo.dispose();
-    // 텍스처는 별도 전역 변수로 보존, 머티리얼만 dispose
-    if (posterMat) {
-      posterMat.map = null; // 텍스처는 해제하지 않음 (재사용)
-      posterMat.dispose();
-    }
+// 렌더러 크기를 카드에 맞춤
+function resizeRendererToCard() {
+  const card = document.getElementById('canvas-card');
+  const w = card.clientWidth;
+  const h = card.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+// ==========================================
+// 포스터 추가 / 삭제
+// ==========================================
+function addPoster(silent) {
+  const params = defaultPosterParams();
+
+  // 기존 포스터 옆에 배치 (X 방향으로 2.5 단위씩 이동)
+  if (posters.length > 0) {
+    params.posX = posters.length * 2.5;
   }
 
-  const W = state.posterW;
-  const H = state.posterH;
+  const { mesh, originalPositions } = buildPosterMeshFromParams(params, null);
+  const shadowMesh = buildShadowMesh(params);
 
-  // 버텍스 세분화: 50×50
-  posterGeo = new THREE.PlaneGeometry(W, H, 50, 50);
+  posters.push({ mesh, originalPositions, shadowMesh, texture: null, params });
+  activePosterIndex = posters.length - 1;
 
-  // 원본 위치 저장 (바람·원통 모드용)
-  originalPositions = new Float32Array(posterGeo.attributes.position.array);
+  renderPosterList();
+  syncSlidersToActivePoster();
 
-  // MeshStandardMaterial — 기본 흰색 (이미지 없을 때)
-  posterMat = new THREE.MeshStandardMaterial({
+  if (!silent) showToast(`포스터 ${posters.length} 추가됨`);
+}
+
+function removePoster(idx) {
+  if (posters.length <= 1) {
+    showToast('마지막 포스터는 삭제할 수 없습니다');
+    return;
+  }
+  const p = posters[idx];
+  scene.remove(p.mesh);
+  p.mesh.geometry.dispose();
+  if (p.texture) p.texture.dispose();
+  scene.remove(p.shadowMesh);
+
+  posters.splice(idx, 1);
+
+  if (activePosterIndex >= posters.length) {
+    activePosterIndex = posters.length - 1;
+  }
+
+  renderPosterList();
+  syncSlidersToActivePoster();
+  showToast('포스터 삭제됨');
+}
+
+function selectPoster(idx) {
+  activePosterIndex = idx;
+  renderPosterList();
+  syncSlidersToActivePoster();
+}
+
+// 포스터 목록 UI 렌더링
+function renderPosterList() {
+  const list = document.getElementById('poster-list');
+  list.innerHTML = '';
+  posters.forEach((p, i) => {
+    const card = document.createElement('div');
+    card.className = 'poster-card' + (i === activePosterIndex ? ' active' : '');
+    card.innerHTML = `
+      <span>포스터 ${i + 1}</span>
+      <div class="poster-card-btns">
+        <button onclick="selectPoster(${i})">선택</button>
+        <button class="del-btn" onclick="removePoster(${i})">삭제</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+// 활성 포스터의 params 값을 슬라이더에 반영
+function syncSlidersToActivePoster() {
+  if (posters.length === 0) return;
+  const p = posters[activePosterIndex].params;
+
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  };
+
+  set('poster-scale',    p.scaleX);
+  set('tilt-x',          p.tiltX);
+  set('tilt-y',          p.tiltY);
+  set('tilt-z',          p.tiltZ);
+  set('shadow-strength', p.shadowStrength);
+
+  // display 값 갱신
+  const map = {
+    'poster-scale':    'scale-val',
+    'tilt-x':          'tilt-x-val',
+    'tilt-y':          'tilt-y-val',
+    'tilt-z':          'tilt-z-val',
+    'shadow-strength': 'shadow-val',
+  };
+  Object.entries(map).forEach(([inputId, displayId]) => {
+    const input = document.getElementById(inputId);
+    if (input) updateSliderDisplay(input, displayId);
+  });
+}
+
+// ==========================================
+// 포스터 메시 빌드
+// ==========================================
+function buildPosterMeshFromParams(params, existingTexture) {
+  const W = params.posterW;
+  const H = params.posterH;
+
+  const geo = new THREE.PlaneGeometry(W, H, 50, 50);
+  const originalPositions = new Float32Array(geo.attributes.position.array);
+
+  const mat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.3,
     metalness: 0.0,
     side: THREE.FrontSide,
   });
 
-  // 이전 텍스처가 있으면 재적용
-  if (currentPosterTexture) {
-    posterMat.map = currentPosterTexture;
-    posterMat.needsUpdate = true;
+  if (existingTexture) {
+    mat.map = existingTexture;
+    mat.needsUpdate = true;
   }
 
-  posterMesh = new THREE.Mesh(posterGeo, posterMat);
-  posterMesh.castShadow = true;
-  posterMesh.receiveShadow = false;
-  scene.add(posterMesh);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow    = true;
+  mesh.receiveShadow = false;
+  mesh.position.set(params.posX, params.posY, params.posZ);
 
-  // 그림자 평면 크기 업데이트
-  if (shadowMesh) {
-    scene.remove(shadowMesh);
-    const sg = new THREE.PlaneGeometry(W * 1.5, H * 1.5);
-    shadowMesh = new THREE.Mesh(sg, shadowMat);
-    shadowMesh.receiveShadow = true;
-    shadowMesh.position.z = -0.02;
-    scene.add(shadowMesh);
-  }
+  const s = params.scaleX;
+  mesh.scale.set(s, s, s);
+  mesh.rotation.x = THREE.MathUtils.degToRad(params.tiltX);
+  mesh.rotation.y = THREE.MathUtils.degToRad(params.tiltY);
+  mesh.rotation.z = THREE.MathUtils.degToRad(params.tiltZ);
 
-  applyPosterTransform();
+  scene.add(mesh);
+  return { mesh, originalPositions };
 }
 
-// 포스터 이동/회전/스케일 적용
-function applyPosterTransform() {
-  if (!posterMesh) return;
-  const s = state.posterScale;
-  posterMesh.scale.set(s, s, s);
-  posterMesh.rotation.x = THREE.MathUtils.degToRad(state.tiltX);
-  posterMesh.rotation.y = THREE.MathUtils.degToRad(state.tiltY);
+// 그림자 메시 빌드
+function buildShadowMesh(params) {
+  const W = params.posterW;
+  const H = params.posterH;
+  const geo = new THREE.PlaneGeometry(W * 1.5, H * 1.5);
+  const mesh = new THREE.Mesh(geo, shadowMat);
+  mesh.receiveShadow = true;
+  mesh.position.set(params.posX, params.posY, params.posZ - 0.02);
+  const s = params.scaleX;
+  mesh.scale.set(s, s, 1);
+  mesh.rotation.x = THREE.MathUtils.degToRad(params.tiltX);
+  mesh.rotation.y = THREE.MathUtils.degToRad(params.tiltY);
+  scene.add(mesh);
+  return mesh;
+}
 
-  // 그림자 평면도 같이 회전
-  if (shadowMesh) {
-    shadowMesh.scale.set(s, s, 1);
-    shadowMesh.rotation.x = posterMesh.rotation.x;
-    shadowMesh.rotation.y = posterMesh.rotation.y;
+// 프리셋에 따라 활성 포스터 재빌드
+function rebuildActivePoster() {
+  if (posters.length === 0) return;
+  const p = posters[activePosterIndex];
+  const params  = p.params;
+  const texture = p.texture;
+
+  // 기존 메시 제거
+  scene.remove(p.mesh);
+  p.mesh.geometry.dispose();
+  if (p.mesh.material) {
+    p.mesh.material.map = null; // 텍스처는 별도 보관
+    p.mesh.material.dispose();
+  }
+  scene.remove(p.shadowMesh);
+
+  const { mesh, originalPositions } = buildPosterMeshFromParams(params, texture);
+  const shadowMesh = buildShadowMesh(params);
+
+  p.mesh              = mesh;
+  p.originalPositions = originalPositions;
+  p.shadowMesh        = shadowMesh;
+
+  // 지오메트리 모드 재적용
+  if (state.mode !== 'wind') applyGeometryModeToAll();
+}
+
+// ==========================================
+// 포스터 트랜스폼 적용
+// ==========================================
+function applyPosterTransform() {
+  if (posters.length === 0) return;
+  const p = posters[activePosterIndex];
+  const params = p.params;
+
+  const s = params.scaleX;
+  p.mesh.scale.set(s, s, s);
+  p.mesh.rotation.x = THREE.MathUtils.degToRad(params.tiltX);
+  p.mesh.rotation.y = THREE.MathUtils.degToRad(params.tiltY);
+  p.mesh.rotation.z = THREE.MathUtils.degToRad(params.tiltZ);
+
+  // 그림자도 동기화
+  if (p.shadowMesh) {
+    p.shadowMesh.scale.set(s, s, 1);
+    p.shadowMesh.rotation.x = p.mesh.rotation.x;
+    p.shadowMesh.rotation.y = p.mesh.rotation.y;
+    p.shadowMesh.position.copy(p.mesh.position);
+    p.shadowMesh.position.z -= 0.02;
   }
 }
 
@@ -948,31 +1309,42 @@ function animate() {
 
   const time = clock.getElapsedTime();
 
-  // 바람 모드: 매 프레임 버텍스 업데이트
-  if (state.mode === 'wind' && posterGeo && originalPositions) {
-    const arr = posterGeo.attributes.position.array;
-    const W = state.posterW;
-    const strength = state.windStrength;
-    const speed = state.windSpeed;
+  // 바람 모드: 모든 포스터에 적용
+  if (state.mode === 'wind') {
+    posters.forEach(p => {
+      if (!p.mesh || !p.originalPositions) return;
+      const geo = p.mesh.geometry;
+      const arr = geo.attributes.position.array;
+      const W   = p.params.posterW;
+      const H   = p.params.posterH;
+      const strength = state.windStrength;
+      const speed    = state.windSpeed;
 
-    for (let i = 0; i < arr.length; i += 3) {
-      const ox = originalPositions[i];
-      const oy = originalPositions[i + 1];
-      const wave1 = Math.sin(ox * 3.0 + time * speed) * Math.cos(oy * 2.0 + time * speed * 0.6);
-      const wave2 = Math.sin(oy * 4.0 + time * speed * 1.3) * 0.5;
-      const edgeFactor = (ox / W + 0.5); // 오른쪽으로 갈수록 더 흔들
-      arr[i]     = ox;
-      arr[i + 1] = oy;
-      arr[i + 2] = (wave1 + wave2) * strength * (0.3 + edgeFactor * 0.7);
-    }
-    posterGeo.attributes.position.needsUpdate = true;
-    posterGeo.computeVertexNormals();
-  }
+      for (let i = 0; i < arr.length; i += 3) {
+        const ox = p.originalPositions[i];
+        const oy = p.originalPositions[i + 1];
 
-  // 원통/일반 모드: 필요할 때만 업데이트
-  if (state.geometryNeedsUpdate) {
-    state.geometryNeedsUpdate = false;
-    applyGeometryMode();
+        const wave1 = Math.sin(ox * 3.0 + time * speed) * Math.cos(oy * 2.0 + time * speed * 0.6);
+        const wave2 = Math.sin(oy * 4.0 + time * speed * 1.3) * 0.5;
+
+        // 버텍스의 normalized 위치 (0~1)
+        const nx = (ox / W + 0.5);
+        const ny = (-oy / H + 0.5);
+
+        // 바람 원점까지의 거리 기반 계수
+        const dx = nx - state.windOriginX;
+        const dy = ny - state.windOriginY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const distanceFactor = Math.min(dist * 2.5, 1.0);
+
+        arr[i]     = ox;
+        arr[i + 1] = oy;
+        arr[i + 2] = (wave1 + wave2) * strength * distanceFactor;
+      }
+
+      geo.attributes.position.needsUpdate = true;
+      geo.computeVertexNormals();
+    });
   }
 
   // VideoTexture 업데이트
@@ -983,50 +1355,168 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// 지오메트리 모드 적용 (일반/원통)
-function applyGeometryMode() {
-  if (!posterGeo || !originalPositions) return;
-  const arr = posterGeo.attributes.position.array;
+// 지오메트리 모드 — 모든 포스터에 적용
+function applyGeometryModeToAll() {
+  posters.forEach(p => applyGeometryMode(p));
+}
+
+function applyGeometryMode(p) {
+  if (!p || !p.mesh || !p.originalPositions) return;
+  const geo = p.mesh.geometry;
+  const arr = geo.attributes.position.array;
 
   if (state.mode === 'flat') {
-    // 원본 위치 복원
     for (let i = 0; i < arr.length; i++) {
-      arr[i] = originalPositions[i];
+      arr[i] = p.originalPositions[i];
     }
   } else if (state.mode === 'cylinder') {
-    const W = state.posterW;
-    const H = state.posterH;
+    const W      = p.params.posterW;
+    const H      = p.params.posterH;
     const amount = state.cylAmount;
-    const axis = state.cylAxis;
+    const axis   = state.cylAxis;
+
+    // amount = 1 일 때 360도 완전한 원통
+    const bendAngle = amount * 2 * Math.PI;
 
     for (let i = 0; i < arr.length; i += 3) {
-      const ox = originalPositions[i];
-      const oy = originalPositions[i + 1];
+      const ox = p.originalPositions[i];
+      const oy = p.originalPositions[i + 1];
 
       if (axis === 'x') {
-        // X축 기준으로 말리기
-        const bendAngle = amount * Math.PI;
-        const radius = W / bendAngle;
+        // X축 기준 말리기 — 뒤로 말림 (z 방향 반전)
+        const radius = W / (2 * Math.PI);
         const t = ox / W; // -0.5 ~ 0.5
         const angle = t * bendAngle;
         arr[i]     = radius * Math.sin(angle);
         arr[i + 1] = oy;
-        arr[i + 2] = radius * (1 - Math.cos(angle)) - radius * (1 - Math.cos(bendAngle / 2));
+        arr[i + 2] = -(radius * (1 - Math.cos(angle)) - radius * (1 - Math.cos(bendAngle / 2)));
       } else {
-        // Y축 기준으로 말리기
-        const bendAngle = amount * Math.PI;
-        const radius = H / bendAngle;
-        const t = oy / H; // -0.5 ~ 0.5
+        // Y축 기준 말리기 — 뒤로 말림
+        const radius = H / (2 * Math.PI);
+        const t = oy / H;
         const angle = t * bendAngle;
         arr[i]     = ox;
         arr[i + 1] = radius * Math.sin(angle);
-        arr[i + 2] = radius * (1 - Math.cos(angle)) - radius * (1 - Math.cos(bendAngle / 2));
+        arr[i + 2] = -(radius * (1 - Math.cos(angle)) - radius * (1 - Math.cos(bendAngle / 2)));
       }
     }
   }
 
-  posterGeo.attributes.position.needsUpdate = true;
-  posterGeo.computeVertexNormals();
+  geo.attributes.position.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+// ==========================================
+// 드래그 인터랙션
+// ==========================================
+function setupDragInteraction() {
+  const canvas = document.getElementById('three-canvas');
+
+  canvas.addEventListener('mousemove', e => {
+    // 호버 커서 처리 (드래그 중 아닐 때)
+    if (!isDragging) {
+      const hit = getPosterUnderMouse(e);
+      canvas.style.cursor = hit >= 0 ? 'grab' : 'default';
+    }
+
+    if (!isDragging) return;
+
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+
+    if (dragPosterIndex < 0 || dragPosterIndex >= posters.length) return;
+    const p = posters[dragPosterIndex];
+
+    if (isAltDrag) {
+      // Alt + 드래그: 회전 조작
+      p.params.tiltY += dx * 0.3;
+      p.params.tiltX -= dy * 0.3;
+      // 범위 클램핑 (-180~180)
+      p.params.tiltY = Math.max(-180, Math.min(180, p.params.tiltY));
+      p.params.tiltX = Math.max(-180, Math.min(180, p.params.tiltX));
+    } else {
+      // 일반 드래그: 위치 이동
+      p.params.posX += dx / 200;
+      p.params.posY -= dy / 200;
+    }
+
+    // 메시에 즉시 반영
+    p.mesh.position.set(p.params.posX, p.params.posY, p.params.posZ);
+    p.mesh.rotation.x = THREE.MathUtils.degToRad(p.params.tiltX);
+    p.mesh.rotation.y = THREE.MathUtils.degToRad(p.params.tiltY);
+    if (p.shadowMesh) {
+      p.shadowMesh.position.set(p.params.posX, p.params.posY, p.params.posZ - 0.02);
+      p.shadowMesh.rotation.x = p.mesh.rotation.x;
+      p.shadowMesh.rotation.y = p.mesh.rotation.y;
+    }
+
+    // 드래그 중인 포스터가 활성 포스터면 슬라이더 동기화
+    if (dragPosterIndex === activePosterIndex) {
+      const setSlider = (id, val, dec) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+      };
+      if (isAltDrag) {
+        setSlider('tilt-x', p.params.tiltX);
+        setSlider('tilt-y', p.params.tiltY);
+        updateSliderDisplay(document.getElementById('tilt-x'), 'tilt-x-val');
+        updateSliderDisplay(document.getElementById('tilt-y'), 'tilt-y-val');
+      }
+    }
+  });
+
+  canvas.addEventListener('mousedown', e => {
+    const hit = getPosterUnderMouse(e);
+    if (hit >= 0) {
+      isDragging = true;
+      dragPosterIndex = hit;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      isAltDrag = e.altKey;
+      canvas.style.cursor = 'grabbing';
+      // 클릭한 포스터 선택
+      selectPoster(hit);
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    isDragging = false;
+    dragPosterIndex = -1;
+    canvas.style.cursor = 'default';
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    isDragging = false;
+    dragPosterIndex = -1;
+    canvas.style.cursor = 'default';
+  });
+
+  // Alt 키 상태 추적
+  window.addEventListener('keydown', e => {
+    if (isDragging && e.altKey) isAltDrag = true;
+  });
+  window.addEventListener('keyup', e => {
+    if (!e.altKey) isAltDrag = false;
+  });
+}
+
+// 마우스 위치에서 포스터 감지 (레이캐스팅)
+function getPosterUnderMouse(e) {
+  const canvas = document.getElementById('three-canvas');
+  const rect = canvas.getBoundingClientRect();
+  mouse.x =  ((e.clientX - rect.left)  / rect.width)  * 2 - 1;
+  mouse.y = -((e.clientY - rect.top)   / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = posters.map(p => p.mesh);
+  const intersects = raycaster.intersectObjects(meshes);
+
+  if (intersects.length > 0) {
+    return meshes.indexOf(intersects[0].object);
+  }
+  return -1;
 }
 
 // ==========================================
@@ -1038,50 +1528,60 @@ function updateLighting() {
   const elevation = parseFloat(document.getElementById('light-elevation').value);
   const ambient   = parseFloat(document.getElementById('ambient-intensity').value);
 
-  // 구면 좌표 → 직교 좌표
-  const az  = THREE.MathUtils.degToRad(azimuth);
-  const el  = THREE.MathUtils.degToRad(elevation);
+  const az   = THREE.MathUtils.degToRad(azimuth);
+  const el   = THREE.MathUtils.degToRad(elevation);
   const dist = 8;
   dirLight.position.set(
     dist * Math.cos(el) * Math.sin(az),
     dist * Math.sin(el),
     dist * Math.cos(el) * Math.cos(az)
   );
-  dirLight.intensity = intensity;
+  dirLight.intensity   = intensity;
   ambientLight.intensity = ambient;
 }
 
 // ==========================================
-// 포스터 컨트롤
+// 포스터 컨트롤 (활성 포스터에 적용)
 // ==========================================
 function updatePosterScale() {
-  state.posterScale = parseFloat(document.getElementById('poster-scale').value);
+  if (posters.length === 0) return;
+  const val = parseFloat(document.getElementById('poster-scale').value);
+  const p   = posters[activePosterIndex];
+  p.params.scaleX = val;
+  p.params.scaleY = val;
+  p.params.scaleZ = val;
   applyPosterTransform();
 }
 
 function updateTilt() {
-  state.tiltX = parseFloat(document.getElementById('tilt-x').value);
-  state.tiltY = parseFloat(document.getElementById('tilt-y').value);
+  if (posters.length === 0) return;
+  const p = posters[activePosterIndex];
+  p.params.tiltX = parseFloat(document.getElementById('tilt-x').value);
+  p.params.tiltY = parseFloat(document.getElementById('tilt-y').value);
+  p.params.tiltZ = parseFloat(document.getElementById('tilt-z').value);
   applyPosterTransform();
 }
 
 function updateShadow() {
-  state.shadowStrength = parseFloat(document.getElementById('shadow-strength').value);
-  if (shadowMat) shadowMat.opacity = state.shadowStrength;
+  if (posters.length === 0) return;
+  const val = parseFloat(document.getElementById('shadow-strength').value);
+  posters[activePosterIndex].params.shadowStrength = val;
+  if (shadowMat) shadowMat.opacity = val;
 }
 
 // 프리셋 적용
 function applyPreset(preset) {
+  if (posters.length === 0) return;
+  const p  = posters[activePosterIndex];
   const sq = Math.SQRT2;
   switch (preset) {
-    case 'a4v':   state.posterW = 2.0; state.posterH = 2.0 * sq;   break;
-    case 'a4h':   state.posterW = 2.0 * sq; state.posterH = 2.0;   break;
-    case 'square':state.posterW = 2.5; state.posterH = 2.5;         break;
-    case '16:9':  state.posterW = 3.2; state.posterH = 1.8;         break;
-    case '9:16':  state.posterW = 1.8; state.posterH = 3.2;         break;
+    case 'a4v':    p.params.posterW = 2.0;      p.params.posterH = 2.0 * sq; break;
+    case 'a4h':    p.params.posterW = 2.0 * sq; p.params.posterH = 2.0;      break;
+    case 'square': p.params.posterW = 2.5;       p.params.posterH = 2.5;      break;
+    case '16:9':   p.params.posterW = 3.2;       p.params.posterH = 1.8;      break;
+    case '9:16':   p.params.posterW = 1.8;       p.params.posterH = 3.2;      break;
   }
-  buildPosterMesh(); // 내부에서 currentPosterTexture 자동 재적용
-  if (state.mode === 'cylinder') state.geometryNeedsUpdate = true;
+  rebuildActivePoster();
   showToast(`프리셋 변경: ${preset}`);
 }
 
@@ -1110,16 +1610,17 @@ function setupPosterUpload() {
 }
 
 function loadPosterImage(file) {
+  if (posters.length === 0) return;
+  const p   = posters[activePosterIndex];
   const url = URL.createObjectURL(file);
   const loader = new THREE.TextureLoader();
   loader.load(url, tex => {
     tex.colorSpace = THREE.SRGBColorSpace;
-    // 기존 텍스처 해제
-    if (currentPosterTexture) currentPosterTexture.dispose();
-    currentPosterTexture = tex; // 전역에 보존 (프리셋 변경 후에도 유지)
-    posterMat.map = tex;
-    posterMat.color.set(0xffffff);
-    posterMat.needsUpdate = true;
+    if (p.texture) p.texture.dispose();
+    p.texture = tex;
+    p.mesh.material.map = tex;
+    p.mesh.material.color.set(0xffffff);
+    p.mesh.material.needsUpdate = true;
 
     const drop = document.getElementById('poster-drop');
     drop.classList.add('uploaded');
@@ -1134,36 +1635,30 @@ function loadPosterImage(file) {
 function switchBgType(type) {
   state.bgType = type;
 
-  // pill 버튼 활성화
   document.querySelectorAll('#bg-type-pills .pill-btn').forEach((btn, i) => {
     const types = ['solid','gradient','image','video'];
     btn.classList.toggle('active', types[i] === type);
   });
 
-  // 패널 전환
   ['solid','gradient','image','video'].forEach(t => {
     document.getElementById('bg-' + t).classList.toggle('active', t === type);
   });
 
-  // 동영상 멈춤 (다른 탭으로 전환 시)
   if (type !== 'video' && videoElement) {
     videoElement.pause();
   }
 
-  // 타입별 즉시 적용
   if (type === 'solid')    updateBgSolid(document.getElementById('bg-color').value);
   if (type === 'gradient') updateBgGradient();
 }
 
-// 단색 배경
 function updateBgSolid(hex) {
   document.getElementById('bg-color-hex').textContent = hex;
   scene.background = null;
-  bgMesh.visible = false;
+  bgMesh.visible   = false;
   scene.background = new THREE.Color(hex);
 }
 
-// 그라디언트 배경 — Canvas → 텍스처
 function updateBgGradient() {
   const c1    = document.getElementById('grad-color1').value;
   const c2    = document.getElementById('grad-color2').value;
@@ -1171,13 +1666,12 @@ function updateBgGradient() {
 
   const size = 512;
   const cvs  = document.createElement('canvas');
-  cvs.width  = size * 1.5; // 가로로 더 넓게
+  cvs.width  = size * 1.5;
   cvs.height = size;
   const ctx  = cvs.getContext('2d');
 
-  // 각도 → 시작/끝 좌표
   const rad = THREE.MathUtils.degToRad(angle - 90);
-  const cx  = cvs.width / 2;
+  const cx  = cvs.width  / 2;
   const cy  = cvs.height / 2;
   const r   = Math.sqrt(cx*cx + cy*cy);
   const grd = ctx.createLinearGradient(
@@ -1189,7 +1683,6 @@ function updateBgGradient() {
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, cvs.width, cvs.height);
 
-  // 기존 텍스처 해제
   if (bgMat.map) bgMat.map.dispose();
 
   scene.background = null;
@@ -1201,7 +1694,6 @@ function updateBgGradient() {
   bgMesh.visible = true;
 }
 
-// 배경 이미지
 function setupBgImageUpload() {
   const drop = document.getElementById('bgimg-drop');
   const file = document.getElementById('bgimg-file');
@@ -1238,7 +1730,6 @@ function loadBgImage(file) {
   });
 }
 
-// 배경 동영상
 function setupBgVideoUpload() {
   const drop = document.getElementById('bgvid-drop');
   const file = document.getElementById('bgvid-file');
@@ -1257,7 +1748,6 @@ function setupBgVideoUpload() {
 }
 
 function loadBgVideo(file) {
-  // 기존 동영상 정리
   if (videoElement) {
     videoElement.pause();
     videoElement.src = '';
@@ -1265,8 +1755,8 @@ function loadBgVideo(file) {
 
   videoElement = document.createElement('video');
   videoElement.src = URL.createObjectURL(file);
-  videoElement.loop   = true;
-  videoElement.muted  = true;
+  videoElement.loop      = true;
+  videoElement.muted     = true;
   videoElement.playsInline = true;
   videoElement.play();
 
@@ -1292,23 +1782,22 @@ function loadBgVideo(file) {
 function switchMode(mode) {
   state.mode = mode;
 
-  // 모드 탭 그룹만 활성화 (onclick 속성으로 식별)
   const modeTabs = document.querySelectorAll('#sec-mode .tab-group:first-of-type .tab-btn');
   modeTabs.forEach(btn => {
     const onclickVal = btn.getAttribute('onclick') || '';
-    const isActive = onclickVal.includes("'" + mode + "'");
+    const isActive   = onclickVal.includes("'" + mode + "'");
     btn.classList.toggle('active', isActive);
   });
 
-  // 파라미터 패널 전환
   ['flat','wind','cylinder'].forEach(m => {
     const el = document.getElementById('params-' + m);
     if (el) el.classList.toggle('active', m === mode);
   });
 
-  // 지오메트리 업데이트 트리거
   if (mode === 'flat' || mode === 'cylinder') {
-    state.geometryNeedsUpdate = true;
+    applyGeometryModeToAll();
+  } else if (mode === 'wind') {
+    // 바람 모드는 animate()에서 실시간 처리
   }
 
   showToast(`모드: ${mode === 'flat' ? '일반' : mode === 'wind' ? '바람' : '원통'}`);
@@ -1322,26 +1811,120 @@ function updateWindParams() {
   state.windSpeed    = parseFloat(document.getElementById('wind-speed').value);
 }
 
+// XY 패드 설정
+function setupWindXYPad() {
+  const pad = document.getElementById('wind-xy-pad');
+  const dot = document.getElementById('wind-xy-dot');
+  let padDragging = false;
+
+  // 초기 도트 위치 반영 (왼쪽 중간 = windOriginX:0, windOriginY:0.5)
+  updateWindXYDot();
+
+  function setFromEvent(e) {
+    const rect = pad.getBoundingClientRect();
+    const cx = Math.max(0, Math.min(e.clientX - rect.left,  rect.width));
+    const cy = Math.max(0, Math.min(e.clientY - rect.top,   rect.height));
+    state.windOriginX = cx / rect.width;
+    state.windOriginY = cy / rect.height;
+    updateWindXYDot();
+    document.getElementById('wind-ox-val').textContent = state.windOriginX.toFixed(2);
+    document.getElementById('wind-oy-val').textContent = state.windOriginY.toFixed(2);
+  }
+
+  pad.addEventListener('mousedown', e => {
+    padDragging = true;
+    setFromEvent(e);
+    e.stopPropagation(); // 포스터 드래그와 충돌 방지
+  });
+  window.addEventListener('mousemove', e => {
+    if (padDragging) setFromEvent(e);
+  });
+  window.addEventListener('mouseup', () => { padDragging = false; });
+}
+
+function updateWindXYDot() {
+  const pad  = document.getElementById('wind-xy-pad');
+  const dot  = document.getElementById('wind-xy-dot');
+  const rect = pad.getBoundingClientRect();
+  // getBoundingClientRect가 0일 수 있으므로 CSS 100px 기준
+  const w = 100, h = 100;
+  dot.style.left = (state.windOriginX * w) + 'px';
+  dot.style.top  = (state.windOriginY * h) + 'px';
+}
+
 // ==========================================
 // 원통 파라미터
 // ==========================================
 function updateCylinder() {
   state.cylAmount = parseFloat(document.getElementById('cyl-amount').value);
-  if (state.mode === 'cylinder') state.geometryNeedsUpdate = true;
+  if (state.mode === 'cylinder') applyGeometryModeToAll();
 }
 
 function setCylAxis(axis) {
   state.cylAxis = axis;
   document.getElementById('cyl-x-btn').classList.toggle('active', axis === 'x');
   document.getElementById('cyl-y-btn').classList.toggle('active', axis === 'y');
-  if (state.mode === 'cylinder') state.geometryNeedsUpdate = true;
+  if (state.mode === 'cylinder') applyGeometryModeToAll();
+}
+
+// ==========================================
+// 캔버스 크기 조절
+// ==========================================
+function applyCanvasSize() {
+  const wInput = document.getElementById('canvas-width');
+  const hInput = document.getElementById('canvas-height');
+  const lock   = document.getElementById('canvas-ratio-lock').checked;
+
+  let newW = parseInt(wInput.value, 10);
+  let newH = parseInt(hInput.value, 10);
+
+  // 유효 범위 클램핑
+  newW = Math.max(400, Math.min(2000, newW || 900));
+  newH = Math.max(300, Math.min(1500, newH || 600));
+
+  wInput.value = newW;
+  hInput.value = newH;
+
+  state.canvasW = newW;
+  state.canvasH = newH;
+
+  const card = document.getElementById('canvas-card');
+  card.style.width  = newW + 'px';
+  card.style.height = newH + 'px';
+
+  renderer.setSize(newW, newH, false);
+  camera.aspect = newW / newH;
+  camera.updateProjectionMatrix();
+
+  showToast(`캔버스: ${newW} × ${newH}`);
+}
+
+// 비율 잠금 — 너비 변경 시 높이 자동 계산
+function setupCanvasSizeInputs() {
+  const wInput = document.getElementById('canvas-width');
+  const hInput = document.getElementById('canvas-height');
+
+  wInput.addEventListener('input', () => {
+    const lock = document.getElementById('canvas-ratio-lock').checked;
+    if (!lock) return;
+    const ratio = state.canvasH / state.canvasW;
+    const newW  = parseInt(wInput.value, 10) || state.canvasW;
+    hInput.value = Math.round(newW * ratio);
+  });
+
+  hInput.addEventListener('input', () => {
+    const lock = document.getElementById('canvas-ratio-lock').checked;
+    if (!lock) return;
+    const ratio = state.canvasW / state.canvasH;
+    const newH  = parseInt(hInput.value, 10) || state.canvasH;
+    wInput.value = Math.round(newH * ratio);
+  });
 }
 
 // ==========================================
 // 내보내기
 // ==========================================
 function exportImage(format) {
-  // 한 프레임 강제 렌더
   renderer.render(scene, camera);
 
   let dataURL;
@@ -1352,13 +1935,12 @@ function exportImage(format) {
   }
 
   const a = document.createElement('a');
-  a.href = dataURL;
+  a.href     = dataURL;
   a.download = `poster-mockup-${Date.now()}.${format}`;
   a.click();
   showToast(`${format.toUpperCase()} 저장 완료`);
 }
 
-// 동영상 녹화
 function toggleRecording() {
   if (!state.isRecording) {
     startRecording();
@@ -1372,9 +1954,7 @@ function startRecording() {
   const stream = renderer.domElement.captureStream(30);
 
   let mimeType = 'video/webm;codecs=vp9';
-  if (!MediaRecorder.isTypeSupported(mimeType)) {
-    mimeType = 'video/webm';
-  }
+  if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
 
   state.mediaRecorder = new MediaRecorder(stream, { mimeType });
   state.mediaRecorder.ondataavailable = e => {
@@ -1414,13 +1994,10 @@ function saveRecording() {
 // ==========================================
 // UI 유틸리티
 // ==========================================
-
-// 섹션 접기/펼치기
 function toggleSection(id) {
   document.getElementById(id).classList.toggle('collapsed');
 }
 
-// 슬라이더 값 표시 업데이트
 function updateSliderDisplay(input, displayId) {
   const el = document.getElementById(displayId);
   if (!el) return;
@@ -1428,7 +2005,6 @@ function updateSliderDisplay(input, displayId) {
   const val = parseFloat(input.value);
   const id  = input.id;
 
-  // 각도 표시
   if (id.includes('tilt') || id.includes('azimuth') || id.includes('elevation') || id.includes('angle')) {
     el.textContent = val + '°';
   } else if (Number.isInteger(val) && !id.includes('strength') && !id.includes('speed') && !id.includes('intensity') && !id.includes('amount') && !id.includes('ambient') && !id.includes('scale')) {
@@ -1438,7 +2014,6 @@ function updateSliderDisplay(input, displayId) {
   }
 }
 
-// 토스트 메시지
 let toastTimer = null;
 function showToast(msg) {
   const toast = document.getElementById('toast');
@@ -1453,18 +2028,19 @@ function showToast(msg) {
 // ==========================================
 function initSliderDisplays() {
   const map = {
-    'poster-scale':     'scale-val',
-    'tilt-x':           'tilt-x-val',
-    'tilt-y':           'tilt-y-val',
-    'shadow-strength':  'shadow-val',
-    'grad-angle':       'grad-angle-val',
-    'wind-strength':    'wind-str-val',
-    'wind-speed':       'wind-spd-val',
-    'cyl-amount':       'cyl-amt-val',
-    'light-intensity':  'light-int-val',
-    'light-azimuth':    'light-az-val',
-    'light-elevation':  'light-el-val',
-    'ambient-intensity':'ambient-val',
+    'poster-scale':      'scale-val',
+    'tilt-x':            'tilt-x-val',
+    'tilt-y':            'tilt-y-val',
+    'tilt-z':            'tilt-z-val',
+    'shadow-strength':   'shadow-val',
+    'grad-angle':        'grad-angle-val',
+    'wind-strength':     'wind-str-val',
+    'wind-speed':        'wind-spd-val',
+    'cyl-amount':        'cyl-amt-val',
+    'light-intensity':   'light-int-val',
+    'light-azimuth':     'light-az-val',
+    'light-elevation':   'light-el-val',
+    'ambient-intensity': 'ambient-val',
   };
   Object.entries(map).forEach(([inputId, displayId]) => {
     const input = document.getElementById(inputId);
@@ -1480,9 +2056,10 @@ window.addEventListener('DOMContentLoaded', () => {
   setupPosterUpload();
   setupBgImageUpload();
   setupBgVideoUpload();
+  setupWindXYPad();
+  setupCanvasSizeInputs();
   initSliderDisplays();
 
-  // 초기 단색 배경 반영
   updateBgSolid(document.getElementById('bg-color').value);
 
   showToast('Poster Mockup Studio 준비 완료');
