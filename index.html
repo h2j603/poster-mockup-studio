@@ -7,6 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <!-- mp4-muxer: WebCodecs 기반 브라우저 내 MP4 인코딩 -->
+  <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@4.1.3/build/mp4-muxer.min.js"></script>
   <style>
     /* ===== CSS 변수 ===== */
     :root {
@@ -987,7 +989,8 @@
           <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">fps</span>
         </div>
       </div>
-      <button class="btn" id="export-video-btn" onclick="exportVideoFrames()">동영상 내보내기 (WebM)</button>
+      <button class="btn" id="export-video-btn" onclick="exportVideo()">동영상 내보내기</button>
+      <p id="export-codec-note" style="font-size:10px;color:var(--text-muted);"></p>
       <div id="export-progress" style="display:none;flex-direction:column;gap:4px;">
         <div style="height:4px;background:var(--panel-border);border-radius:2px;overflow:hidden;">
           <div id="export-progress-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.1s;"></div>
@@ -2426,68 +2429,166 @@ function saveRecording() {
 }
 
 // ─────────────────────────────────────────────
-// 프레임 단위 동영상 내보내기 (WebM, 녹화 불필요)
-// canvas.captureStream + MediaRecorder를 정해진 시간만큼 자동 실행
+// 동영상 내보내기
+// · Chrome 94+ : WebCodecs + mp4-muxer → H.264 MP4 (진짜 인코딩)
+// · 그 외 브라우저 : MediaRecorder → WebM (실시간 녹화)
 // ─────────────────────────────────────────────
 let isExportingVideo = false;
 
-async function exportVideoFrames() {
-  if (isExportingVideo) return;
-
-  const duration = Math.max(1, parseInt(document.getElementById('export-duration').value) || 3);
-  const fps      = Math.max(12, Math.min(60, parseInt(document.getElementById('export-fps').value) || 30));
-  const totalFrames = duration * fps;
-
-  const btn      = document.getElementById('export-video-btn');
-  const progress = document.getElementById('export-progress');
-  const bar      = document.getElementById('export-progress-bar');
-  const label    = document.getElementById('export-progress-label');
-
-  isExportingVideo = true;
-  btn.disabled = true;
-  btn.textContent = '준비 중...';
-  progress.style.display = 'flex';
-  bar.style.width = '0%';
-
-  // 지원 코덱 탐색
-  const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-  const mimeType   = candidates.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
-
-  const chunks  = [];
-  const stream  = renderer.domElement.captureStream(fps);
-  const rec     = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
-  rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-
-  rec.start(1000 / fps); // 프레임마다 chunk
-
-  // 정해진 프레임 수만큼 대기
-  const frameInterval = 1000 / fps;
-  for (let f = 0; f < totalFrames; f++) {
-    await new Promise(r => setTimeout(r, frameInterval));
-    const pct = Math.round((f + 1) / totalFrames * 100);
-    bar.style.width   = pct + '%';
-    label.textContent = `${f + 1} / ${totalFrames} 프레임`;
-    btn.textContent   = `내보내는 중... ${pct}%`;
-  }
-
-  rec.stop();
-  await new Promise(r => { rec.onstop = r; });
-
-  const blob = new Blob(chunks, { type: mimeType });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
+// 공통 다운로드 헬퍼
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
   a.href     = url;
-  a.download = `poster-mockup-${Date.now()}.webm`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  setTimeout(() => URL.revokeObjectURL(url), 15000);
+}
 
-  isExportingVideo = false;
-  btn.disabled    = false;
-  btn.textContent = '동영상 내보내기 (WebM)';
-  progress.style.display = 'none';
-  showToast('WebM 동영상 저장 완료');
+// 진행률 UI 헬퍼
+function setExportProgress(f, total, label) {
+  const pct = Math.round((f + 1) / total * 100);
+  document.getElementById('export-progress-bar').style.width = pct + '%';
+  document.getElementById('export-progress-label').textContent =
+    `${f + 1} / ${total} 프레임`;
+  document.getElementById('export-video-btn').textContent = label + ` ${pct}%`;
+}
+
+// 메인 진입점
+async function exportVideo() {
+  if (isExportingVideo) return;
+
+  const canUseWebCodecs = !!(window.VideoEncoder && window.Mp4Muxer);
+  const note = document.getElementById('export-codec-note');
+
+  if (canUseWebCodecs) {
+    note.textContent = '';
+    await exportMP4WebCodecs();
+  } else {
+    note.textContent = 'Chrome 94+ 에서는 MP4로 저장됩니다 (현재: WebM)';
+    await exportWebM();
+  }
+}
+
+// ── MP4 내보내기 (WebCodecs + mp4-muxer) ──────────────────────
+async function exportMP4WebCodecs() {
+  const duration    = Math.max(1, parseInt(document.getElementById('export-duration').value) || 3);
+  const fps         = Math.max(12, Math.min(60, parseInt(document.getElementById('export-fps').value) || 30));
+  const totalFrames = duration * fps;
+  const frameMs     = 1000 / fps;
+  const frameMicros = 1_000_000 / fps;
+
+  const canvasEl = renderer.domElement;
+  const W = canvasEl.width;
+  const H = canvasEl.height;
+
+  const btn      = document.getElementById('export-video-btn');
+  const progress = document.getElementById('export-progress');
+  isExportingVideo = true;
+  btn.disabled = true;
+  progress.style.display = 'flex';
+  document.getElementById('export-progress-bar').style.width = '0%';
+
+  try {
+    // H.264 코덱 지원 탐색 (높은 품질부터)
+    const h264Candidates = ['avc1.640034', 'avc1.4d0032', 'avc1.42001f', 'avc1.42001e'];
+    let videoCodec = 'avc1.42001e'; // 기본 fallback
+    for (const c of h264Candidates) {
+      const check = await VideoEncoder.isConfigSupported({ codec: c, width: W, height: H, bitrate: 10_000_000 });
+      if (check.supported) { videoCodec = c; break; }
+    }
+
+    const { Muxer, ArrayBufferTarget } = window.Mp4Muxer;
+    const target = new ArrayBufferTarget();
+    const muxer  = new Muxer({ target, video: { codec: 'avc', width: W, height: H }, fastStart: 'in-memory' });
+
+    let encoderError = null;
+    const encoder = new VideoEncoder({
+      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+      error:  (e) => { encoderError = e; },
+    });
+    encoder.configure({ codec: videoCodec, width: W, height: H, bitrate: 10_000_000, framerate: fps });
+
+    // 프레임 캡처 루프 (실시간 속도)
+    for (let f = 0; f < totalFrames; f++) {
+      if (encoderError) throw encoderError;
+      await new Promise(r => setTimeout(r, frameMs)); // 실제 시간만큼 대기 → 애니메이션 정상 속도
+      const timestamp = Math.round(f * frameMicros);
+      const frame = new VideoFrame(canvasEl, { timestamp });
+      encoder.encode(frame, { keyFrame: f % (fps * 2) === 0 });
+      frame.close();
+      setExportProgress(f, totalFrames, 'MP4 인코딩 중...');
+    }
+
+    await encoder.flush();
+    muxer.finalize();
+
+    downloadBlob(new Blob([target.buffer], { type: 'video/mp4' }), `poster-mockup-${Date.now()}.mp4`);
+    showToast('MP4 저장 완료 ✓');
+
+  } catch (e) {
+    console.error(e);
+    showToast('MP4 실패, WebM으로 재시도 중...');
+    await exportWebM(); // 실패 시 WebM fallback
+    return; // finally 블록에서 UI 복구
+  } finally {
+    isExportingVideo = false;
+    btn.disabled = false;
+    btn.textContent = '동영상 내보내기';
+    progress.style.display = 'none';
+  }
+}
+
+// ── WebM 내보내기 (MediaRecorder fallback) ────────────────────
+async function exportWebM() {
+  const duration    = Math.max(1, parseInt(document.getElementById('export-duration').value) || 3);
+  const fps         = Math.max(12, Math.min(60, parseInt(document.getElementById('export-fps').value) || 30));
+  const totalFrames = duration * fps;
+  const frameMs     = 1000 / fps;
+
+  const btn      = document.getElementById('export-video-btn');
+  const progress = document.getElementById('export-progress');
+  isExportingVideo = true;
+  btn.disabled = true;
+  progress.style.display = 'flex';
+  document.getElementById('export-progress-bar').style.width = '0%';
+
+  try {
+    const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    const mimeType   = candidates.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+
+    const chunks = [];
+    const stream = renderer.domElement.captureStream(fps);
+    const rec    = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
+    rec.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    rec.start(Math.round(frameMs));
+
+    for (let f = 0; f < totalFrames; f++) {
+      await new Promise(r => setTimeout(r, frameMs));
+      setExportProgress(f, totalFrames, 'WebM 녹화 중...');
+    }
+
+    rec.stop();
+    // onstop 대기 — addEventListener로 안정적으로 처리
+    await new Promise((resolve) => {
+      rec.addEventListener('stop', resolve, { once: true });
+      setTimeout(resolve, 3000); // 3초 안전 타임아웃
+    });
+
+    downloadBlob(new Blob(chunks, { type: mimeType }), `poster-mockup-${Date.now()}.webm`);
+    showToast('WebM 저장 완료 ✓');
+
+  } catch (e) {
+    console.error(e);
+    showToast('동영상 내보내기 실패: ' + e.message);
+  } finally {
+    isExportingVideo = false;
+    btn.disabled = false;
+    btn.textContent = '동영상 내보내기';
+    progress.style.display = 'none';
+  }
 }
 
 // ==========================================
