@@ -2545,19 +2545,30 @@ async function exportVideo() {
     return;
   }
 
-  // mp4-muxer ESM 동적 import (jsDelivr +esm 변환)
+  // mp4-muxer ESM 동적 import — CDN 여러 개 순서대로 시도
   let Muxer, ArrayBufferTarget;
-  try {
-    const mod = await import('https://cdn.jsdelivr.net/npm/mp4-muxer@4.1.3/+esm');
-    Muxer            = mod.Muxer;
-    ArrayBufferTarget = mod.ArrayBufferTarget;
-    note.textContent = '';
-  } catch (e) {
-    console.warn('mp4-muxer 로드 실패, WebM으로 전환:', e);
-    note.textContent = 'mp4-muxer 로드 실패 → WebM으로 저장';
+  const muxerCdns = [
+    'https://esm.sh/mp4-muxer@4.1.3',
+    'https://cdn.skypack.dev/mp4-muxer@4.1.3',
+    'https://cdn.jsdelivr.net/npm/mp4-muxer@4.1.3/+esm',
+  ];
+  let muxerLoaded = false;
+  for (const cdn of muxerCdns) {
+    try {
+      const mod = await import(cdn);
+      Muxer             = mod.Muxer;
+      ArrayBufferTarget = mod.ArrayBufferTarget;
+      if (Muxer && ArrayBufferTarget) { muxerLoaded = true; break; }
+    } catch (e) {
+      console.warn('mp4-muxer 로드 실패:', cdn, e);
+    }
+  }
+  if (!muxerLoaded) {
+    note.textContent = 'mp4-muxer 로드 실패 → MediaRecorder 방식으로 저장';
     await exportWebM();
     return;
   }
+  note.textContent = '';
 
   await exportMP4WebCodecs(Muxer, ArrayBufferTarget);
 }
@@ -2663,18 +2674,30 @@ async function exportWebM() {
   document.getElementById('export-progress-bar').style.width = '0%';
 
   try {
-    const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-    const mimeType   = candidates.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+    // Safari: mp4 우선 / Chrome/Firefox: webm fallback
+    const candidates = [
+      'video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4',
+      'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm',
+    ];
+    const safeCheck = t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } };
+    const mimeType  = candidates.find(safeCheck) || '';
+    const ext       = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
 
     const chunks = [];
     const stream = renderer.domElement.captureStream(fps);
-    const rec    = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
+    let rec;
+    try {
+      rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
+    } catch {
+      rec = new MediaRecorder(stream); // 마지막 수단: 브라우저 기본값
+    }
     rec.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
     rec.start(Math.round(frameMs));
 
+    const label = ext === 'mp4' ? 'MP4 녹화 중...' : 'WebM 녹화 중...';
     for (let f = 0; f < totalFrames; f++) {
       await new Promise(r => setTimeout(r, frameMs));
-      setExportProgress(f, totalFrames, 'WebM 녹화 중...');
+      setExportProgress(f, totalFrames, label);
     }
 
     rec.stop();
@@ -2684,8 +2707,9 @@ async function exportWebM() {
       setTimeout(resolve, 3000); // 3초 안전 타임아웃
     });
 
-    downloadBlob(new Blob(chunks, { type: mimeType }), `poster-mockup-${Date.now()}.webm`);
-    showToast('WebM 저장 완료 ✓');
+    const actualType = rec.mimeType || mimeType || 'video/webm';
+    downloadBlob(new Blob(chunks, { type: actualType }), `poster-mockup-${Date.now()}.${ext}`);
+    showToast(`${ext.toUpperCase()} 저장 완료 ✓`);
 
   } catch (e) {
     console.error(e);
