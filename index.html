@@ -970,14 +970,29 @@
       내보내기 <span class="arrow">▾</span>
     </div>
     <div class="section-body">
+
+      <!-- 공통: 해상도 배율 -->
+      <div class="field">
+        <label>내보내기 해상도</label>
+        <div class="tab-group" style="margin-top:2px;">
+          <button class="tab-btn" id="scale-1x" onclick="setExportScale(1)">1×</button>
+          <button class="tab-btn active" id="scale-2x" onclick="setExportScale(2)">2×</button>
+          <button class="tab-btn" id="scale-4x" onclick="setExportScale(4)">4×</button>
+        </div>
+        <span id="export-res-label" style="font-size:10px;color:var(--text-muted);margin-top:4px;display:block;"></span>
+      </div>
+
+      <!-- 이미지 -->
       <div class="btn-row">
         <button class="btn" onclick="exportImage('png')">PNG 저장</button>
         <button class="btn" onclick="exportImage('jpg')">JPG 저장</button>
       </div>
+
       <div class="divider"></div>
-      <!-- 동영상 내보내기 -->
+
+      <!-- 동영상 -->
       <div class="field">
-        <label>동영상 내보내기</label>
+        <label>동영상</label>
         <div class="field-row" style="gap:6px;">
           <input type="number" id="export-duration" min="1" max="60" value="3"
             style="width:52px;padding:5px 6px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:6px;font-size:12px;color:var(--text);">
@@ -988,11 +1003,11 @@
         </div>
       </div>
       <div class="field">
-        <label>화질</label>
+        <label>비트레이트</label>
         <div class="tab-group" style="margin-top:2px;">
-          <button class="tab-btn" id="q-medium" onclick="setExportQuality('medium')">보통</button>
-          <button class="tab-btn active" id="q-high" onclick="setExportQuality('high')">고화질</button>
-          <button class="tab-btn" id="q-ultra" onclick="setExportQuality('ultra')">최고</button>
+          <button class="tab-btn" id="q-medium" onclick="setExportQuality('medium')">8 Mbps</button>
+          <button class="tab-btn active" id="q-high" onclick="setExportQuality('high')">25 Mbps</button>
+          <button class="tab-btn" id="q-ultra" onclick="setExportQuality('ultra')">60 Mbps</button>
         </div>
       </div>
       <button class="btn" id="export-video-btn" onclick="exportVideo()">동영상 내보내기</button>
@@ -1003,13 +1018,14 @@
         </div>
         <span id="export-progress-label" style="font-size:10px;color:var(--text-muted);">0 / 0 프레임</span>
       </div>
+
       <div class="divider"></div>
       <div class="btn-row">
         <button class="btn btn-record" id="record-btn" onclick="toggleRecording()">
           ● 실시간 녹화
         </button>
       </div>
-      <p style="font-size:10px;color:var(--text-muted);">실시간 녹화는 브라우저가 지원하는 형식으로 저장</p>
+      <p style="font-size:10px;color:var(--text-muted);">실시간 녹화는 브라우저 지원 형식으로 저장</p>
     </div>
   </div>
 
@@ -1231,6 +1247,9 @@ function initThree() {
 
   // 드래그 이벤트 등록
   setupDragInteraction();
+
+  // 내보내기 해상도 라벨 초기화
+  setTimeout(updateExportResLabel, 100);
 
   // 애니메이션 루프 시작
   animate();
@@ -2311,6 +2330,7 @@ function applyCanvasSize() {
   camera.aspect = newW / newH;
   camera.updateProjectionMatrix();
 
+  updateExportResLabel();
   showToast(`캔버스: ${newW} × ${newH}`);
 }
 
@@ -2340,20 +2360,38 @@ function setupCanvasSizeInputs() {
 // 내보내기
 // ==========================================
 function exportImage(format) {
-  renderer.render(scene, camera);
+  const card  = document.getElementById('canvas-card');
+  const baseW = card.clientWidth;
+  const baseH = card.clientHeight;
+  const scale = exportScale;
 
-  let dataURL;
-  if (format === 'png') {
-    dataURL = renderer.domElement.toDataURL('image/png');
-  } else {
-    dataURL = renderer.domElement.toDataURL('image/jpeg', 0.95);
+  // CSS 크기는 유지한 채 내부 버퍼만 확대 (updateStyle=false → 화면 깜빡임 없음)
+  if (scale > 1) {
+    renderer.setPixelRatio(1);
+    renderer.setSize(baseW * scale, baseH * scale, false);
+    camera.aspect = baseW / baseH;
+    camera.updateProjectionMatrix();
   }
 
+  renderer.render(scene, camera);
+
+  const dataURL = format === 'png'
+    ? renderer.domElement.toDataURL('image/png')
+    : renderer.domElement.toDataURL('image/jpeg', 0.95);
+
+  // 버퍼 복원
+  if (scale > 1) {
+    resizeRendererToCard();
+  }
+
+  const suffix = scale > 1 ? `_${scale}x` : '';
   const a = document.createElement('a');
   a.href     = dataURL;
-  a.download = `poster-mockup-${Date.now()}.${format}`;
+  a.download = `poster-mockup${suffix}-${Date.now()}.${format}`;
+  document.body.appendChild(a);
   a.click();
-  showToast(`${format.toUpperCase()} 저장 완료`);
+  document.body.removeChild(a);
+  showToast(`${format.toUpperCase()} ${baseW * scale}×${baseH * scale} 저장 완료`);
 }
 
 function toggleRecording() {
@@ -2462,13 +2500,30 @@ function setExportProgress(f, total, label) {
   document.getElementById('export-video-btn').textContent = label + ` ${pct}%`;
 }
 
-// 화질 프리셋
+// 내보내기 설정
+let exportScale   = 2;   // 해상도 배율 (1/2/4)
 let exportQuality = 'high';
 const qualityPresets = {
-  medium: { bitrate: 8_000_000,  pixelRatio: 1 },
-  high:   { bitrate: 25_000_000, pixelRatio: 1 },
-  ultra:  { bitrate: 60_000_000, pixelRatio: 2 }, // 2× 해상도 렌더링
+  medium: { bitrate: 8_000_000  },
+  high:   { bitrate: 25_000_000 },
+  ultra:  { bitrate: 60_000_000 },
 };
+
+function setExportScale(s) {
+  exportScale = s;
+  ['1x','2x','4x'].forEach(k =>
+    document.getElementById('scale-'+k).classList.toggle('active', k === s+'x')
+  );
+  updateExportResLabel();
+}
+
+function updateExportResLabel() {
+  const card = document.getElementById('canvas-card');
+  const w = Math.round(card.clientWidth  * exportScale);
+  const h = Math.round(card.clientHeight * exportScale);
+  const el = document.getElementById('export-res-label');
+  if (el) el.textContent = `${w} × ${h} px`;
+}
 
 function setExportQuality(q) {
   exportQuality = q;
@@ -2515,16 +2570,21 @@ async function exportMP4WebCodecs(Muxer, ArrayBufferTarget) {
   const frameMs     = 1000 / fps;
   const frameMicros = 1_000_000 / fps;
 
-  const preset = qualityPresets[exportQuality] || qualityPresets.high;
-  const { bitrate, pixelRatio: pr } = preset;
+  const preset  = qualityPresets[exportQuality] || qualityPresets.high;
+  const { bitrate } = preset;
+  const scale   = exportScale;
 
-  // ultra 모드: 렌더러를 일시적으로 고해상도로 설정
-  const origPR  = renderer.getPixelRatio();
-  const canvasEl = renderer.domElement;
-  if (pr > 1) {
-    renderer.setPixelRatio(pr);
-    resizeRendererToCard(); // 해상도 반영
+  // 업스케일: CSS 크기 유지, 버퍼만 확대
+  const card  = document.getElementById('canvas-card');
+  const baseW = card.clientWidth;
+  const baseH = card.clientHeight;
+  if (scale > 1) {
+    renderer.setPixelRatio(1);
+    renderer.setSize(baseW * scale, baseH * scale, false);
+    camera.aspect = baseW / baseH;
+    camera.updateProjectionMatrix();
   }
+  const canvasEl = renderer.domElement;
   const W = canvasEl.width;
   const H = canvasEl.height;
 
@@ -2569,9 +2629,9 @@ async function exportMP4WebCodecs(Muxer, ArrayBufferTarget) {
     await encoder.flush();
     muxer.finalize();
 
-    const label = { medium:'보통', high:'고화질', ultra:'최고화질' }[exportQuality] || '';
-    downloadBlob(new Blob([target.buffer], { type: 'video/mp4' }), `poster-mockup-${label}-${Date.now()}.mp4`);
-    showToast(`MP4 저장 완료 (${label}) ✓`);
+    const suffix = scale > 1 ? `_${scale}x` : '';
+    downloadBlob(new Blob([target.buffer], { type: 'video/mp4' }), `poster-mockup${suffix}-${Date.now()}.mp4`);
+    showToast(`MP4 ${W}×${H} 저장 완료 ✓`);
 
   } catch (e) {
     console.error(e);
@@ -2579,11 +2639,8 @@ async function exportMP4WebCodecs(Muxer, ArrayBufferTarget) {
     await exportWebM();
     return;
   } finally {
-    // ultra 모드 해제
-    if (pr > 1) {
-      renderer.setPixelRatio(origPR);
-      resizeRendererToCard();
-    }
+    // 업스케일 해제 → 화면 복원
+    if (scale > 1) resizeRendererToCard();
     isExportingVideo = false;
     btn.disabled = false;
     btn.textContent = '동영상 내보내기';
