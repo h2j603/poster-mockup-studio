@@ -680,6 +680,16 @@
         </div>
       </div>
 
+      <!-- 종이 질감 -->
+      <div class="field">
+        <label>종이 질감</label>
+        <div class="tab-group" style="margin-top:2px;">
+          <button class="tab-btn" id="finish-matte" onclick="setPosterFinish('matte')">무광</button>
+          <button class="tab-btn active" id="finish-satin" onclick="setPosterFinish('satin')">반광</button>
+          <button class="tab-btn" id="finish-gloss" onclick="setPosterFinish('gloss')">유광</button>
+        </div>
+      </div>
+
       <!-- 그림자 강도 -->
       <div class="field">
         <label>그림자 강도</label>
@@ -801,6 +811,8 @@
         <button class="tab-btn active" onclick="switchMode('flat')">일반</button>
         <button class="tab-btn" onclick="switchMode('wind')">바람</button>
         <button class="tab-btn" onclick="switchMode('cylinder')">원통</button>
+        <button class="tab-btn" onclick="switchMode('swing')">흔들림</button>
+        <button class="tab-btn" onclick="switchMode('wave')">물결</button>
       </div>
 
       <!-- 일반 모드 (파라미터 없음) -->
@@ -841,6 +853,53 @@
                 좌측 가장자리가<br>기본 원점입니다
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 흔들림 모드 파라미터 -->
+      <div class="mode-params" id="params-swing">
+        <div class="field">
+          <label>진폭</label>
+          <div class="field-row">
+            <input type="range" id="swing-amp" min="1" max="45" step="0.5" value="15"
+              oninput="updateSliderDisplay(this,'swing-amp-val')">
+            <span class="value-display" id="swing-amp-val">15°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>속도</label>
+          <div class="field-row">
+            <input type="range" id="swing-speed" min="0.2" max="3.0" step="0.05" value="0.8"
+              oninput="updateSliderDisplay(this,'swing-spd-val')">
+            <span class="value-display" id="swing-spd-val">0.80</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 물결 모드 파라미터 -->
+      <div class="mode-params" id="params-wave">
+        <div class="field">
+          <label>파동 강도</label>
+          <div class="field-row">
+            <input type="range" id="wave-strength" min="0.02" max="0.3" step="0.005" value="0.12"
+              oninput="updateSliderDisplay(this,'wave-str-val')">
+            <span class="value-display" id="wave-str-val">0.120</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>파동 속도</label>
+          <div class="field-row">
+            <input type="range" id="wave-speed" min="0.3" max="4.0" step="0.05" value="1.5"
+              oninput="updateSliderDisplay(this,'wave-spd-val')">
+            <span class="value-display" id="wave-spd-val">1.50</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>파동 방향</label>
+          <div class="tab-group" style="margin-top:2px;">
+            <button class="tab-btn active" id="wave-horiz" onclick="setWaveDir('horizontal')">가로</button>
+            <button class="tab-btn" id="wave-vert" onclick="setWaveDir('vertical')">세로</button>
           </div>
         </div>
       </div>
@@ -910,6 +969,15 @@
         </div>
       </div>
 
+      <div class="field">
+        <label>그림자 블러</label>
+        <div class="field-row">
+          <input type="range" id="shadow-blur" min="1" max="20" step="0.5" value="4"
+            oninput="updateSliderDisplay(this,'shadow-blur-val'); updateShadowBlur()">
+          <span class="value-display" id="shadow-blur-val">4.00</span>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -930,6 +998,53 @@
         </button>
       </div>
       <p style="font-size:10px;color:var(--text-muted);">녹화 완료 시 WebM 파일로 저장됩니다</p>
+    </div>
+  </div>
+
+  <!-- 자동 무빙 섹션 -->
+  <div class="section" id="sec-auto">
+    <div class="section-header" onclick="toggleSection('sec-auto')">
+      자동 무빙 <span class="arrow">▾</span>
+    </div>
+    <div class="section-body">
+      <label class="checkbox-row">
+        <input type="checkbox" id="auto-move-enabled" onchange="toggleAutoMove(this.checked)">
+        자동 무빙 활성화
+      </label>
+      <div id="auto-move-params" style="display:none;flex-direction:column;gap:10px;margin-top:4px;">
+        <div class="field">
+          <label>X축 속도</label>
+          <div class="field-row">
+            <input type="range" id="auto-spd-x" min="-30" max="30" step="0.5" value="0"
+              oninput="updateSliderDisplay(this,'auto-spd-x-val')">
+            <span class="value-display" id="auto-spd-x-val">0°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Y축 속도</label>
+          <div class="field-row">
+            <input type="range" id="auto-spd-y" min="-30" max="30" step="0.5" value="8"
+              oninput="updateSliderDisplay(this,'auto-spd-y-val')">
+            <span class="value-display" id="auto-spd-y-val">8°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Z축 속도</label>
+          <div class="field-row">
+            <input type="range" id="auto-spd-z" min="-30" max="30" step="0.5" value="0"
+              oninput="updateSliderDisplay(this,'auto-spd-z-val')">
+            <span class="value-display" id="auto-spd-z-val">0°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>진폭 (최대 각도)</label>
+          <div class="field-row">
+            <input type="range" id="auto-amplitude" min="0" max="180" step="1" value="360"
+              oninput="updateSliderDisplay(this,'auto-amp-val')">
+            <span class="value-display" id="auto-amp-val">360°</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -983,7 +1098,7 @@
 // 전역 상태
 // ==========================================
 const state = {
-  mode: 'flat',          // 'flat' | 'wind' | 'cylinder'
+  mode: 'flat',          // 'flat' | 'wind' | 'cylinder' | 'swing' | 'wave'
   bgType: 'solid',       // 'solid' | 'gradient' | 'image' | 'video'
   cylAxis: 'x',          // 'x' | 'y'
   windStrength: 0.05,
@@ -999,6 +1114,13 @@ const state = {
   // 캔버스 크기
   canvasW: 900,
   canvasH: 600,
+  // 돌풍 시스템
+  gustStrength: 0,
+  gustTimer: 0,
+  nextGustTime: 2.0,
+  gustDecay: 0.5,
+  // 물결 방향
+  waveDir: 'horizontal',
 };
 
 // ==========================================
@@ -1331,10 +1453,20 @@ function applyPosterTransform() {
 function animate() {
   requestAnimationFrame(animate);
 
-  const time = clock.getElapsedTime();
+  const delta = clock.getDelta();
+  const time  = clock.getElapsedTime();
 
-  // 바람 모드: 모든 포스터에 적용
+  // 바람 모드: 모든 포스터에 적용 (돌풍 시스템 포함)
   if (state.mode === 'wind') {
+    // 돌풍 타이머 업데이트
+    state.gustTimer += delta;
+    if (state.gustTimer > state.nextGustTime) {
+      state.gustStrength = 0.5 + Math.random() * 0.5;
+      state.gustDecay    = 0.3 + Math.random() * 0.4;
+      state.nextGustTime = state.gustTimer + 1.5 + Math.random() * 3.0;
+    }
+    state.gustStrength *= Math.exp(-state.gustDecay * delta);
+
     posters.forEach(p => {
       if (!p.mesh || !p.originalPositions) return;
       const geo = p.mesh.geometry;
@@ -1343,13 +1475,12 @@ function animate() {
       const H   = p.params.posterH;
       const strength = state.windStrength;
       const speed    = state.windSpeed;
+      const gust     = state.gustStrength;
+      const totalStrength = strength * (1.0 + gust * 2.5);
 
       for (let i = 0; i < arr.length; i += 3) {
         const ox = p.originalPositions[i];
         const oy = p.originalPositions[i + 1];
-
-        const wave1 = Math.sin(ox * 3.0 + time * speed) * Math.cos(oy * 2.0 + time * speed * 0.6);
-        const wave2 = Math.sin(oy * 4.0 + time * speed * 1.3) * 0.5;
 
         // 버텍스의 normalized 위치 (0~1)
         const nx = (ox / W + 0.5);
@@ -1361,13 +1492,92 @@ function animate() {
         const dist = Math.sqrt(dx * dx + dy * dy);
         const distanceFactor = Math.min(dist * 2.5, 1.0);
 
+        // 다중 sin파 + 위상 오프셋으로 자연스러운 난류
+        const wave1 = Math.sin(ox * 2.1 + time * speed * 0.8) * Math.cos(oy * 1.7 + time * speed * 0.5);
+        const wave2 = Math.sin(ox * 5.3 + time * speed * 1.4 + 1.2) * 0.4;
+        const wave3 = Math.sin(oy * 3.7 + time * speed * 0.6 + 2.1) * 0.3;
+        const wave4 = Math.sin((ox + oy) * 2.8 + time * speed * 1.1) * 0.2;
+
+        // 돌풍은 포스터 끝쪽에 더 강하게
+        const gustEdge = Math.pow(distanceFactor, 0.7);
+
         arr[i]     = ox;
         arr[i + 1] = oy;
-        arr[i + 2] = (wave1 + wave2) * strength * distanceFactor;
+        arr[i + 2] = (wave1 + wave2 + wave3 + wave4) * totalStrength * (distanceFactor + gustEdge * gust * 0.5);
       }
 
       geo.attributes.position.needsUpdate = true;
       geo.computeVertexNormals();
+    });
+  }
+
+  // 흔들림 모드 — 버텍스 변형 없음, rotation만 조작
+  if (state.mode === 'swing' && !autoMoveEnabled) {
+    const amp   = parseFloat(document.getElementById('swing-amp').value);
+    const speed = parseFloat(document.getElementById('swing-speed').value);
+    const swingY = Math.sin(time * speed) * amp + Math.sin(time * speed * 2.1) * amp * 0.1;
+    const swingX = Math.sin(time * speed * 1.3 + 0.4) * amp * 0.15;
+    posters.forEach(p => {
+      p.mesh.rotation.y = THREE.MathUtils.degToRad(p.params.tiltY + swingY);
+      p.mesh.rotation.x = THREE.MathUtils.degToRad(p.params.tiltX + swingX);
+    });
+  }
+
+  // 물결 모드 — 버텍스 변형
+  if (state.mode === 'wave') {
+    const strength = parseFloat(document.getElementById('wave-strength').value);
+    const speed    = parseFloat(document.getElementById('wave-speed').value);
+    const isHoriz  = state.waveDir !== 'vertical';
+
+    posters.forEach(p => {
+      if (!p.mesh || !p.originalPositions) return;
+      const geo = p.mesh.geometry;
+      const arr = geo.attributes.position.array;
+      const W   = p.params.posterW;
+      const H   = p.params.posterH;
+
+      for (let i = 0; i < arr.length; i += 3) {
+        const ox = p.originalPositions[i];
+        const oy = p.originalPositions[i + 1];
+
+        if (isHoriz) {
+          // 왼쪽 고정, 오른쪽으로 갈수록 파동 증폭
+          const progress = (ox / W + 0.5);
+          const wave = Math.sin(ox * 3.0 + time * speed) + Math.sin(ox * 5.5 + time * speed * 1.3) * 0.3;
+          arr[i + 2] = wave * strength * progress * progress;
+        } else {
+          // 아래 고정, 위로 갈수록 파동
+          const progress = (-oy / H + 0.5);
+          const wave = Math.sin(oy * 3.0 - time * speed) + Math.sin(oy * 5.5 - time * speed * 1.3) * 0.3;
+          arr[i + 2] = wave * strength * progress * progress;
+        }
+        arr[i]     = ox;
+        arr[i + 1] = oy;
+      }
+
+      geo.attributes.position.needsUpdate = true;
+      geo.computeVertexNormals();
+    });
+  }
+
+  // 자동 무빙
+  if (autoMoveEnabled && posters.length > 0) {
+    autoMoveTime += delta;
+    const spdX = parseFloat(document.getElementById('auto-spd-x').value);
+    const spdY = parseFloat(document.getElementById('auto-spd-y').value);
+    const spdZ = parseFloat(document.getElementById('auto-spd-z').value);
+    const amp  = parseFloat(document.getElementById('auto-amplitude').value);
+
+    posters.forEach(p => {
+      if (amp >= 359) {
+        p.mesh.rotation.x += THREE.MathUtils.degToRad(spdX) * delta;
+        p.mesh.rotation.y += THREE.MathUtils.degToRad(spdY) * delta;
+        p.mesh.rotation.z += THREE.MathUtils.degToRad(spdZ) * delta;
+      } else {
+        p.mesh.rotation.x = THREE.MathUtils.degToRad(p.params.tiltX + Math.sin(autoMoveTime * spdX * 0.05) * amp);
+        p.mesh.rotation.y = THREE.MathUtils.degToRad(p.params.tiltY + Math.sin(autoMoveTime * spdY * 0.05) * amp);
+        p.mesh.rotation.z = THREE.MathUtils.degToRad(p.params.tiltZ + Math.sin(autoMoveTime * spdZ * 0.05) * amp);
+      }
     });
   }
 
@@ -1901,7 +2111,7 @@ function switchMode(mode) {
     btn.classList.toggle('active', isActive);
   });
 
-  ['flat','wind','cylinder'].forEach(m => {
+  ['flat','wind','cylinder','swing','wave'].forEach(m => {
     const el = document.getElementById('params-' + m);
     if (el) el.classList.toggle('active', m === mode);
   });
@@ -1910,9 +2120,14 @@ function switchMode(mode) {
     applyGeometryModeToAll();
   } else if (mode === 'wind') {
     // 바람 모드는 animate()에서 실시간 처리
+  } else if (mode === 'swing') {
+    // 흔들림 모드는 animate()에서 실시간 처리
+  } else if (mode === 'wave') {
+    // 물결 모드는 animate()에서 실시간 처리
   }
 
-  showToast(`모드: ${mode === 'flat' ? '일반' : mode === 'wind' ? '바람' : '원통'}`);
+  const modeNames = { flat: '일반', wind: '바람', cylinder: '원통', swing: '흔들림', wave: '물결' };
+  showToast(`모드: ${modeNames[mode] || mode}`);
 }
 
 // ==========================================
@@ -1962,6 +2177,59 @@ function updateWindXYDot() {
   const w = 100, h = 100;
   dot.style.left = (state.windOriginX * w) + 'px';
   dot.style.top  = (state.windOriginY * h) + 'px';
+}
+
+// ==========================================
+// 자동 무빙
+// ==========================================
+let autoMoveEnabled = false;
+let autoMoveTime    = 0;
+
+function toggleAutoMove(enabled) {
+  autoMoveEnabled = enabled;
+  document.getElementById('auto-move-params').style.display = enabled ? 'flex' : 'none';
+}
+
+// ==========================================
+// 물결 방향
+// ==========================================
+function setWaveDir(dir) {
+  state.waveDir = dir;
+  document.getElementById('wave-horiz').classList.toggle('active', dir === 'horizontal');
+  document.getElementById('wave-vert').classList.toggle('active', dir === 'vertical');
+}
+
+// ==========================================
+// 그림자 블러
+// ==========================================
+function updateShadowBlur() {
+  const val = parseFloat(document.getElementById('shadow-blur').value);
+  if (dirLight && dirLight.shadow) {
+    dirLight.shadow.radius = val;
+    dirLight.shadow.needsUpdate = true;
+  }
+}
+
+// ==========================================
+// 종이 질감 (무광/반광/유광)
+// ==========================================
+function setPosterFinish(finish) {
+  ['matte','satin','gloss'].forEach(f => {
+    document.getElementById('finish-' + f).classList.toggle('active', f === finish);
+  });
+  const configs = {
+    matte: { roughness: 0.92, metalness: 0.0 },
+    satin: { roughness: 0.45, metalness: 0.05 },
+    gloss: { roughness: 0.08, metalness: 0.18 },
+  };
+  const cfg = configs[finish];
+  posters.forEach(p => {
+    if (p.mesh && p.mesh.material) {
+      p.mesh.material.roughness  = cfg.roughness;
+      p.mesh.material.metalness  = cfg.metalness;
+      p.mesh.material.needsUpdate = true;
+    }
+  });
 }
 
 // ==========================================
@@ -2146,7 +2414,8 @@ function updateSliderDisplay(input, displayId) {
   const val = parseFloat(input.value);
   const id  = input.id;
 
-  if (id.includes('tilt') || id.includes('azimuth') || id.includes('elevation') || id.includes('angle')) {
+  if (id.includes('tilt') || id.includes('azimuth') || id.includes('elevation') || id.includes('angle')
+      || id === 'swing-amp' || id.startsWith('auto-spd') || id === 'auto-amplitude') {
     el.textContent = val + '°';
   } else if (Number.isInteger(val) && !id.includes('strength') && !id.includes('speed') && !id.includes('intensity') && !id.includes('amount') && !id.includes('ambient') && !id.includes('scale')) {
     el.textContent = val;
@@ -2174,6 +2443,7 @@ function initSliderDisplays() {
     'tilt-y':            'tilt-y-val',
     'tilt-z':            'tilt-z-val',
     'shadow-strength':   'shadow-val',
+    'shadow-blur':       'shadow-blur-val',
     'grad-angle':        'grad-angle-val',
     'wind-strength':     'wind-str-val',
     'wind-speed':        'wind-spd-val',
@@ -2182,6 +2452,14 @@ function initSliderDisplays() {
     'light-azimuth':     'light-az-val',
     'light-elevation':   'light-el-val',
     'ambient-intensity': 'ambient-val',
+    'swing-amp':         'swing-amp-val',
+    'swing-speed':       'swing-spd-val',
+    'wave-strength':     'wave-str-val',
+    'wave-speed':        'wave-spd-val',
+    'auto-spd-x':        'auto-spd-x-val',
+    'auto-spd-y':        'auto-spd-y-val',
+    'auto-spd-z':        'auto-spd-z-val',
+    'auto-amplitude':    'auto-amp-val',
   };
   Object.entries(map).forEach(([inputId, displayId]) => {
     const input = document.getElementById(inputId);
@@ -2202,6 +2480,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initSliderDisplays();
 
   updateBgSolid(document.getElementById('bg-color').value);
+  updateShadowBlur();
 
   showToast('Poster Mockup Studio 준비 완료');
 });
