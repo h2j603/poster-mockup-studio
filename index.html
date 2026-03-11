@@ -1079,12 +1079,12 @@ function initThree() {
   dirLight.shadow.mapSize.width  = 2048;
   dirLight.shadow.mapSize.height = 2048;
   dirLight.shadow.camera.near   = 0.1;
-  dirLight.shadow.camera.far    = 30;
-  dirLight.shadow.camera.left   = -5;
-  dirLight.shadow.camera.right  = 5;
-  dirLight.shadow.camera.top    = 5;
-  dirLight.shadow.camera.bottom = -5;
-  dirLight.shadow.bias = -0.001;
+  dirLight.shadow.camera.far    = 50;
+  dirLight.shadow.camera.left   = -10;
+  dirLight.shadow.camera.right  = 10;
+  dirLight.shadow.camera.top    = 10;
+  dirLight.shadow.camera.bottom = -10;
+  dirLight.shadow.bias = -0.0005;
   scene.add(dirLight);
 
   updateLighting();
@@ -1097,8 +1097,16 @@ function initThree() {
   bgMesh.visible = false;
   scene.add(bgMesh);
 
-  // ─── 그림자 머티리얼 (공통) ───
-  shadowMat = new THREE.ShadowMaterial({ opacity: 0.5 });
+  // ─── 전역 그림자 수신 플레인 ───
+  // ShadowMaterial: 그림자가 맺히는 곳만 어둡게, 나머지는 투명 → 배경이 보임
+  shadowMat = new THREE.ShadowMaterial({ opacity: 0.5, transparent: true, depthWrite: false });
+  const shadowPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(30, 20),
+    shadowMat
+  );
+  shadowPlane.receiveShadow = true;
+  shadowPlane.position.z = -0.08; // 포스터 바로 뒤
+  scene.add(shadowPlane);
 
   // ─── 첫 번째 포스터 생성 ───
   addPoster(true);
@@ -1156,7 +1164,6 @@ function removePoster(idx) {
   scene.remove(p.mesh);
   p.mesh.geometry.dispose();
   if (p.texture) p.texture.dispose();
-  scene.remove(p.shadowMesh);
 
   posters.splice(idx, 1);
 
@@ -1247,7 +1254,7 @@ function buildPosterMeshFromParams(params, existingTexture) {
 
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow    = true;
-  mesh.receiveShadow = false;
+  mesh.receiveShadow = true;
   mesh.position.set(params.posX, params.posY, params.posZ);
 
   const s = params.scaleX;
@@ -1256,25 +1263,26 @@ function buildPosterMeshFromParams(params, existingTexture) {
   mesh.rotation.y = THREE.MathUtils.degToRad(params.tiltY);
   mesh.rotation.z = THREE.MathUtils.degToRad(params.tiltZ);
 
+  // 뒷면 메시 — 종이 질감 (앞뒤 얹힘 처리)
+  const backMat = new THREE.MeshStandardMaterial({
+    color: 0xf0ece4,
+    roughness: 0.9,
+    metalness: 0.0,
+    side: THREE.BackSide,
+    depthWrite: true,
+  });
+  const backGeo  = new THREE.PlaneGeometry(W, H, 50, 50);
+  const backMesh = new THREE.Mesh(backGeo, backMat);
+  backMesh.castShadow    = true;
+  backMesh.receiveShadow = true;
+  mesh.add(backMesh); // 부모 메시에 자식으로 부착 → 변형 공유
+
   scene.add(mesh);
   return { mesh, originalPositions };
 }
 
-// 그림자 메시 빌드
-function buildShadowMesh(params) {
-  const W = params.posterW;
-  const H = params.posterH;
-  const geo = new THREE.PlaneGeometry(W * 1.5, H * 1.5);
-  const mesh = new THREE.Mesh(geo, shadowMat);
-  mesh.receiveShadow = true;
-  mesh.position.set(params.posX, params.posY, params.posZ - 0.02);
-  const s = params.scaleX;
-  mesh.scale.set(s, s, 1);
-  mesh.rotation.x = THREE.MathUtils.degToRad(params.tiltX);
-  mesh.rotation.y = THREE.MathUtils.degToRad(params.tiltY);
-  scene.add(mesh);
-  return mesh;
-}
+// 그림자는 전역 shadowPlane에서 처리 → 포스터별 그림자 메시 불필요
+function buildShadowMesh(params) { return null; }
 
 // 프리셋에 따라 활성 포스터 재빌드
 function rebuildActivePoster() {
@@ -1290,14 +1298,11 @@ function rebuildActivePoster() {
     p.mesh.material.map = null; // 텍스처는 별도 보관
     p.mesh.material.dispose();
   }
-  scene.remove(p.shadowMesh);
 
   const { mesh, originalPositions } = buildPosterMeshFromParams(params, texture);
-  const shadowMesh = buildShadowMesh(params);
 
   p.mesh              = mesh;
   p.originalPositions = originalPositions;
-  p.shadowMesh        = shadowMesh;
 
   // 지오메트리 모드 재적용
   if (state.mode !== 'wind') applyGeometryModeToAll();
@@ -1317,14 +1322,7 @@ function applyPosterTransform() {
   p.mesh.rotation.y = THREE.MathUtils.degToRad(params.tiltY);
   p.mesh.rotation.z = THREE.MathUtils.degToRad(params.tiltZ);
 
-  // 그림자도 동기화
-  if (p.shadowMesh) {
-    p.shadowMesh.scale.set(s, s, 1);
-    p.shadowMesh.rotation.x = p.mesh.rotation.x;
-    p.shadowMesh.rotation.y = p.mesh.rotation.y;
-    p.shadowMesh.position.copy(p.mesh.position);
-    p.shadowMesh.position.z -= 0.02;
-  }
+  // 그림자는 전역 shadowPlane이 처리
 }
 
 // ==========================================
@@ -1472,11 +1470,7 @@ function setupDragInteraction() {
     p.mesh.position.set(p.params.posX, p.params.posY, p.params.posZ);
     p.mesh.rotation.x = THREE.MathUtils.degToRad(p.params.tiltX);
     p.mesh.rotation.y = THREE.MathUtils.degToRad(p.params.tiltY);
-    if (p.shadowMesh) {
-      p.shadowMesh.position.set(p.params.posX, p.params.posY, p.params.posZ - 0.02);
-      p.shadowMesh.rotation.x = p.mesh.rotation.x;
-      p.shadowMesh.rotation.y = p.mesh.rotation.y;
-    }
+    // 그림자는 전역 shadowPlane이 처리
 
     // 드래그 중인 포스터가 활성 포스터면 슬라이더 동기화
     if (dragPosterIndex === activePosterIndex) {
@@ -2069,23 +2063,42 @@ function toggleRecording() {
 
 function startRecording() {
   state.recordedChunks = [];
-  const stream = renderer.domElement.captureStream(30);
 
-  let mimeType = 'video/webm;codecs=vp9';
-  if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+  // preserveDrawingBuffer가 true여야 captureStream이 정상 작동
+  let stream;
+  try {
+    stream = renderer.domElement.captureStream(30);
+  } catch(e) {
+    showToast('브라우저가 캔버스 녹화를 지원하지 않습니다');
+    return;
+  }
 
-  state.mediaRecorder = new MediaRecorder(stream, { mimeType });
+  // 지원 코덱 우선순위: mp4(Safari) → vp9 → vp8 → 기본 webm
+  const candidates = [
+    'video/mp4;codecs=avc1',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  const mimeType = candidates.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+
+  try {
+    state.mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+  } catch(e) {
+    state.mediaRecorder = new MediaRecorder(stream);
+  }
+
   state.mediaRecorder.ondataavailable = e => {
-    if (e.data.size > 0) state.recordedChunks.push(e.data);
+    if (e.data && e.data.size > 0) state.recordedChunks.push(e.data);
   };
   state.mediaRecorder.onstop = saveRecording;
-  state.mediaRecorder.start(100);
+  state.mediaRecorder.start(100); // 100ms마다 chunk 발행
 
   state.isRecording = true;
   document.getElementById('record-btn').textContent = '■ 녹화 중지';
   document.getElementById('record-btn').classList.add('recording');
   document.getElementById('record-indicator').classList.add('visible');
-  showToast('녹화 시작');
+  showToast('녹화 시작 — 중지 버튼을 눌러 저장');
 }
 
 function stopRecording() {
@@ -2099,14 +2112,24 @@ function stopRecording() {
 }
 
 function saveRecording() {
-  const blob = new Blob(state.recordedChunks, { type: 'video/webm' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `poster-mockup-${Date.now()}.webm`;
+  if (state.recordedChunks.length === 0) {
+    showToast('녹화된 데이터가 없습니다');
+    return;
+  }
+
+  // 실제 사용된 mimeType으로 blob 생성
+  const mimeType = state.mediaRecorder?.mimeType || 'video/webm';
+  const ext      = mimeType.includes('mp4') ? 'mp4' : 'webm';
+  const blob     = new Blob(state.recordedChunks, { type: mimeType });
+  const url      = URL.createObjectURL(blob);
+  const a        = document.createElement('a');
+  a.href         = url;
+  a.download     = `poster-mockup-${Date.now()}.${ext}`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
-  showToast('WebM 파일 저장 완료');
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  showToast(`${ext.toUpperCase()} 저장 완료`);
 }
 
 // ==========================================
