@@ -690,15 +690,6 @@
         </div>
       </div>
 
-      <!-- 그림자 강도 -->
-      <div class="field">
-        <label>그림자 강도</label>
-        <div class="field-row">
-          <input type="range" id="shadow-strength" min="0" max="1" step="0.01" value="0.5"
-            oninput="updateSliderDisplay(this,'shadow-val'); updateShadow()">
-          <span class="value-display" id="shadow-val">0.50</span>
-        </div>
-      </div>
 
     </div>
   </div>
@@ -969,14 +960,6 @@
         </div>
       </div>
 
-      <div class="field">
-        <label>그림자 블러</label>
-        <div class="field-row">
-          <input type="range" id="shadow-blur" min="1" max="20" step="0.5" value="4"
-            oninput="updateSliderDisplay(this,'shadow-blur-val'); updateShadowBlur()">
-          <span class="value-display" id="shadow-blur-val">4.00</span>
-        </div>
-      </div>
 
     </div>
   </div>
@@ -992,12 +975,32 @@
         <button class="btn" onclick="exportImage('jpg')">JPG 저장</button>
       </div>
       <div class="divider"></div>
+      <!-- 동영상 내보내기 -->
+      <div class="field">
+        <label>동영상 내보내기</label>
+        <div class="field-row" style="gap:6px;">
+          <input type="number" id="export-duration" min="1" max="60" value="3"
+            style="width:52px;padding:5px 6px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:6px;font-size:12px;color:var(--text);">
+          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">초</span>
+          <input type="number" id="export-fps" min="12" max="60" value="30"
+            style="width:52px;padding:5px 6px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:6px;font-size:12px;color:var(--text);">
+          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">fps</span>
+        </div>
+      </div>
+      <button class="btn" id="export-video-btn" onclick="exportVideoFrames()">동영상 내보내기 (WebM)</button>
+      <div id="export-progress" style="display:none;flex-direction:column;gap:4px;">
+        <div style="height:4px;background:var(--panel-border);border-radius:2px;overflow:hidden;">
+          <div id="export-progress-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.1s;"></div>
+        </div>
+        <span id="export-progress-label" style="font-size:10px;color:var(--text-muted);">0 / 0 프레임</span>
+      </div>
+      <div class="divider"></div>
       <div class="btn-row">
         <button class="btn btn-record" id="record-btn" onclick="toggleRecording()">
-          ● 녹화 시작
+          ● 실시간 녹화
         </button>
       </div>
-      <p style="font-size:10px;color:var(--text-muted);">녹화 완료 시 WebM 파일로 저장됩니다</p>
+      <p style="font-size:10px;color:var(--text-muted);">실시간 녹화는 브라우저가 지원하는 형식으로 저장</p>
     </div>
   </div>
 
@@ -1174,8 +1177,7 @@ function initThree() {
     preserveDrawingBuffer: true,
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = false;
 
   // 씬
   scene = new THREE.Scene();
@@ -1197,16 +1199,7 @@ function initThree() {
   scene.add(ambientLight);
 
   dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
-  dirLight.castShadow = true;
-  dirLight.shadow.mapSize.width  = 2048;
-  dirLight.shadow.mapSize.height = 2048;
-  dirLight.shadow.camera.near   = 0.1;
-  dirLight.shadow.camera.far    = 50;
-  dirLight.shadow.camera.left   = -10;
-  dirLight.shadow.camera.right  = 10;
-  dirLight.shadow.camera.top    = 10;
-  dirLight.shadow.camera.bottom = -10;
-  dirLight.shadow.bias = -0.0005;
+  dirLight.castShadow = false;
   scene.add(dirLight);
 
   updateLighting();
@@ -1219,16 +1212,6 @@ function initThree() {
   bgMesh.visible = false;
   scene.add(bgMesh);
 
-  // ─── 전역 그림자 수신 플레인 ───
-  // ShadowMaterial: 그림자가 맺히는 곳만 어둡게, 나머지는 투명 → 배경이 보임
-  shadowMat = new THREE.ShadowMaterial({ opacity: 0.5, transparent: true, depthWrite: false });
-  const shadowPlane = new THREE.Mesh(
-    new THREE.PlaneGeometry(30, 20),
-    shadowMat
-  );
-  shadowPlane.receiveShadow = true;
-  shadowPlane.position.z = -0.08; // 포스터 바로 뒤
-  scene.add(shadowPlane);
 
   // ─── 첫 번째 포스터 생성 ───
   addPoster(true);
@@ -1375,8 +1358,6 @@ function buildPosterMeshFromParams(params, existingTexture) {
   }
 
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow    = true;
-  mesh.receiveShadow = true;
   mesh.position.set(params.posX, params.posY, params.posZ);
 
   const s = params.scaleX;
@@ -1395,8 +1376,6 @@ function buildPosterMeshFromParams(params, existingTexture) {
   });
   const backGeo  = new THREE.PlaneGeometry(W, H, 50, 50);
   const backMesh = new THREE.Mesh(backGeo, backMat);
-  backMesh.castShadow    = true;
-  backMesh.receiveShadow = true;
   mesh.add(backMesh); // 부모 메시에 자식으로 부착 → 변형 공유
 
   scene.add(mesh);
@@ -1449,6 +1428,17 @@ function applyPosterTransform() {
 
 // ==========================================
 // 애니메이션 루프
+// 뒷면 메시에 앞면 버텍스 배열 동기화 (바람·흔들림·물결 공통)
+function syncBackMesh(frontMesh, posArr) {
+  const back = frontMesh.children[0];
+  if (!back || !back.geometry) return;
+  const backArr = back.geometry.attributes.position.array;
+  if (backArr.length !== posArr.length) return;
+  backArr.set(posArr);
+  back.geometry.attributes.position.needsUpdate = true;
+  back.geometry.computeVertexNormals();
+}
+
 // ==========================================
 function animate() {
   requestAnimationFrame(animate);
@@ -1508,18 +1498,55 @@ function animate() {
 
       geo.attributes.position.needsUpdate = true;
       geo.computeVertexNormals();
+      // 뒷면 메시에도 동일한 버텍스 적용
+      syncBackMesh(p.mesh, arr);
     });
   }
 
-  // 흔들림 모드 — 버텍스 변형 없음, rotation만 조작
+  // 흔들림 모드 — 회전 + 종이 나풀거림 버텍스
   if (state.mode === 'swing' && !autoMoveEnabled) {
     const amp   = parseFloat(document.getElementById('swing-amp').value);
     const speed = parseFloat(document.getElementById('swing-speed').value);
-    const swingY = Math.sin(time * speed) * amp + Math.sin(time * speed * 2.1) * amp * 0.1;
-    const swingX = Math.sin(time * speed * 1.3 + 0.4) * amp * 0.15;
+
+    // 단진자 + 고차 조화로 자연스러운 흔들림
+    const swingY = Math.sin(time * speed) * amp + Math.sin(time * speed * 2.3) * amp * 0.08;
+    const swingX = Math.sin(time * speed * 1.4 + 0.6) * amp * 0.12;
+    // 흔들림 순간 속도 (미분 근사) — 가속/감속에 따라 나풀거림 세기 변화
+    const velY = Math.cos(time * speed) * speed;
+
     posters.forEach(p => {
+      if (!p.mesh || !p.originalPositions) return;
       p.mesh.rotation.y = THREE.MathUtils.degToRad(p.params.tiltY + swingY);
       p.mesh.rotation.x = THREE.MathUtils.degToRad(p.params.tiltX + swingX);
+
+      // 종이 나풀거림 — 가장자리가 더 크게, 속도에 비례
+      const geo = p.mesh.geometry;
+      const arr = geo.attributes.position.array;
+      const W   = p.params.posterW;
+      const H   = p.params.posterH;
+
+      for (let i = 0; i < arr.length; i += 3) {
+        const ox = p.originalPositions[i];
+        const oy = p.originalPositions[i + 1];
+
+        // 가장자리 계수: 모서리에 가까울수록 1
+        const ex = Math.abs(ox) / (W * 0.5);
+        const ey = Math.abs(oy) / (H * 0.5);
+        const edge = Math.pow(Math.max(ex, ey), 1.5);
+
+        // 고주파 떨림 + 흔들림 속도 연동
+        const flutter =
+          Math.sin(ox * 6.0 + time * speed * 4.0) * 0.6 +
+          Math.sin(oy * 4.5 + time * speed * 3.2 + 1.1) * 0.4;
+
+        arr[i]     = ox;
+        arr[i + 1] = oy;
+        arr[i + 2] = flutter * edge * 0.035 * (amp / 15) * Math.abs(velY);
+      }
+
+      geo.attributes.position.needsUpdate = true;
+      geo.computeVertexNormals();
+      syncBackMesh(p.mesh, arr);
     });
   }
 
@@ -1541,12 +1568,10 @@ function animate() {
         const oy = p.originalPositions[i + 1];
 
         if (isHoriz) {
-          // 왼쪽 고정, 오른쪽으로 갈수록 파동 증폭
           const progress = (ox / W + 0.5);
           const wave = Math.sin(ox * 3.0 + time * speed) + Math.sin(ox * 5.5 + time * speed * 1.3) * 0.3;
           arr[i + 2] = wave * strength * progress * progress;
         } else {
-          // 아래 고정, 위로 갈수록 파동
           const progress = (-oy / H + 0.5);
           const wave = Math.sin(oy * 3.0 - time * speed) + Math.sin(oy * 5.5 - time * speed * 1.3) * 0.3;
           arr[i + 2] = wave * strength * progress * progress;
@@ -1557,6 +1582,7 @@ function animate() {
 
       geo.attributes.position.needsUpdate = true;
       geo.computeVertexNormals();
+      syncBackMesh(p.mesh, arr);
     });
   }
 
@@ -2385,7 +2411,6 @@ function saveRecording() {
     return;
   }
 
-  // 실제 사용된 mimeType으로 blob 생성
   const mimeType = state.mediaRecorder?.mimeType || 'video/webm';
   const ext      = mimeType.includes('mp4') ? 'mp4' : 'webm';
   const blob     = new Blob(state.recordedChunks, { type: mimeType });
@@ -2398,6 +2423,71 @@ function saveRecording() {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 10000);
   showToast(`${ext.toUpperCase()} 저장 완료`);
+}
+
+// ─────────────────────────────────────────────
+// 프레임 단위 동영상 내보내기 (WebM, 녹화 불필요)
+// canvas.captureStream + MediaRecorder를 정해진 시간만큼 자동 실행
+// ─────────────────────────────────────────────
+let isExportingVideo = false;
+
+async function exportVideoFrames() {
+  if (isExportingVideo) return;
+
+  const duration = Math.max(1, parseInt(document.getElementById('export-duration').value) || 3);
+  const fps      = Math.max(12, Math.min(60, parseInt(document.getElementById('export-fps').value) || 30));
+  const totalFrames = duration * fps;
+
+  const btn      = document.getElementById('export-video-btn');
+  const progress = document.getElementById('export-progress');
+  const bar      = document.getElementById('export-progress-bar');
+  const label    = document.getElementById('export-progress-label');
+
+  isExportingVideo = true;
+  btn.disabled = true;
+  btn.textContent = '준비 중...';
+  progress.style.display = 'flex';
+  bar.style.width = '0%';
+
+  // 지원 코덱 탐색
+  const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  const mimeType   = candidates.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+
+  const chunks  = [];
+  const stream  = renderer.domElement.captureStream(fps);
+  const rec     = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
+  rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+  rec.start(1000 / fps); // 프레임마다 chunk
+
+  // 정해진 프레임 수만큼 대기
+  const frameInterval = 1000 / fps;
+  for (let f = 0; f < totalFrames; f++) {
+    await new Promise(r => setTimeout(r, frameInterval));
+    const pct = Math.round((f + 1) / totalFrames * 100);
+    bar.style.width   = pct + '%';
+    label.textContent = `${f + 1} / ${totalFrames} 프레임`;
+    btn.textContent   = `내보내는 중... ${pct}%`;
+  }
+
+  rec.stop();
+  await new Promise(r => { rec.onstop = r; });
+
+  const blob = new Blob(chunks, { type: mimeType });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `poster-mockup-${Date.now()}.webm`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+  isExportingVideo = false;
+  btn.disabled    = false;
+  btn.textContent = '동영상 내보내기 (WebM)';
+  progress.style.display = 'none';
+  showToast('WebM 동영상 저장 완료');
 }
 
 // ==========================================
