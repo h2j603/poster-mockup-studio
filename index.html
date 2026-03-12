@@ -1000,6 +1000,9 @@
           <input type="number" id="export-fps" min="12" max="60" value="30"
             style="width:52px;padding:5px 6px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:6px;font-size:12px;color:var(--text);">
           <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">fps</span>
+          <input type="number" id="export-loops" min="1" max="10" value="1"
+            style="width:44px;padding:5px 6px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:6px;font-size:12px;color:var(--text);">
+          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">루프</span>
         </div>
       </div>
       <div class="field">
@@ -2577,7 +2580,8 @@ async function exportVideo() {
 async function exportMP4WebCodecs(Muxer, ArrayBufferTarget) {
   const duration    = Math.max(1, parseInt(document.getElementById('export-duration').value) || 3);
   const fps         = Math.max(12, Math.min(60, parseInt(document.getElementById('export-fps').value) || 30));
-  const totalFrames = duration * fps;
+  const loops       = Math.max(1, Math.min(10, parseInt(document.getElementById('export-loops').value) || 1));
+  const totalFrames = duration * fps * loops;
   const frameMs     = 1000 / fps;
   const frameMicros = 1_000_000 / fps;
 
@@ -2663,7 +2667,8 @@ async function exportMP4WebCodecs(Muxer, ArrayBufferTarget) {
 async function exportWebM() {
   const duration    = Math.max(1, parseInt(document.getElementById('export-duration').value) || 3);
   const fps         = Math.max(12, Math.min(60, parseInt(document.getElementById('export-fps').value) || 30));
-  const totalFrames = duration * fps;
+  const loops       = Math.max(1, Math.min(10, parseInt(document.getElementById('export-loops').value) || 1));
+  const totalFrames = duration * fps * loops;
   const frameMs     = 1000 / fps;
 
   const btn      = document.getElementById('export-video-btn');
