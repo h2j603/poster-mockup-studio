@@ -2101,14 +2101,43 @@ function setupPosterUpload() {
   });
 }
 
+// 이미지 파일 → 텍스처. 긴 변을 maxSize 로 줄여서 올린다.
+// 폰 카메라 원본(수천만 화소)을 그대로 GPU 에 올리면 iOS 사파리가 검은 텍스처를 만든다.
+// EXIF 회전도 여기서 반영.
+async function fileToTexture(file, maxSize) {
+  let img;
+  try {
+    img = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch (e) {
+    img = await new Promise((res, rej) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = rej;
+      im.src = URL.createObjectURL(file);
+    });
+  }
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  const s = Math.min(1, maxSize / Math.max(w, h));
+  const c = document.createElement('canvas');
+  c.width  = Math.max(1, Math.round(w * s));
+  c.height = Math.max(1, Math.round(h * s));
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  if (img.close) img.close();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function loadPosterImage(file) {
   if (posters.length === 0) return;
   const p   = posters[activePosterIndex];
-  const url = URL.createObjectURL(file);
-  const loader = new THREE.TextureLoader();
-  loader.load(url, tex => {
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); // 기울였을 때 글자 뭉개짐 방지
+  const maxSize = Math.min(2048, renderer.capabilities.maxTextureSize);
+  fileToTexture(file, maxSize).catch(err => {
+    showToast('이미지를 읽지 못했습니다');
+    console.error(err);
+  }).then(tex => {
+    if (!tex) return;
+    tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); // 기울였을 때 글자 뭉개짐 방지
     if (p.texture) p.texture.dispose();
     p.texture = tex;
     p.mesh.material.map = tex;
@@ -2291,10 +2320,12 @@ function setupBgImageUpload() {
 }
 
 function loadBgImage(file) {
-  const url = URL.createObjectURL(file);
-  const loader = new THREE.TextureLoader();
-  loader.load(url, tex => {
-    tex.colorSpace = THREE.SRGBColorSpace;
+  const maxSize = Math.min(4096, renderer.capabilities.maxTextureSize);
+  fileToTexture(file, maxSize).catch(err => {
+    showToast('이미지를 읽지 못했습니다');
+    console.error(err);
+  }).then(tex => {
+    if (!tex) return;
     if (bgMat.map) bgMat.map.dispose();
     scene.background = null;
     bgMat.map = tex;
