@@ -2104,6 +2104,12 @@ function setupPosterUpload() {
 // 이미지 파일 → 텍스처. 긴 변을 maxSize 로 줄여서 올린다.
 // 폰 카메라 원본(수천만 화소)을 그대로 GPU 에 올리면 iOS 사파리가 검은 텍스처를 만든다.
 // EXIF 회전도 여기서 반영.
+// iPadOS 는 UA 가 Mac 으로 나와서 터치 포인트로 구분
+function isMobileDevice() {
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod|Android/i.test(ua) || (/Mac/.test(ua) && navigator.maxTouchPoints > 1);
+}
+
 async function fileToTexture(file, maxSize) {
   let img;
   try {
@@ -2131,7 +2137,8 @@ async function fileToTexture(file, maxSize) {
 function loadPosterImage(file) {
   if (posters.length === 0) return;
   const p   = posters[activePosterIndex];
-  const maxSize = Math.min(2048, renderer.capabilities.maxTextureSize);
+  // 데스크톱은 4096 (대형 내보내기용), 모바일은 메모리 한도 때문에 2048
+  const maxSize = Math.min(isMobileDevice() ? 2048 : 4096, renderer.capabilities.maxTextureSize);
   fileToTexture(file, maxSize).catch(err => {
     showToast('이미지를 읽지 못했습니다');
     console.error(err);
