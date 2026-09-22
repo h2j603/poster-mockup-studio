@@ -691,6 +691,15 @@
         </div>
       </div>
 
+      <div class="field">
+        <label>종이 디테일</label>
+        <div class="field-row">
+          <input type="range" id="paper-detail" min="0" max="1" step="0.05" value="0.5"
+            oninput="updateSliderDisplay(this,'paper-detail-val'); setPaperDetail(parseFloat(this.value))">
+          <span class="value-display" id="paper-detail-val">0.50</span>
+        </div>
+      </div>
+
 
     </div>
   </div>
@@ -928,9 +937,9 @@
       <div class="field">
         <label>방향광 밝기</label>
         <div class="field-row">
-          <input type="range" id="light-intensity" min="0" max="5" step="0.05" value="2.0"
+          <input type="range" id="light-intensity" min="0" max="5" step="0.05" value="1.0"
             oninput="updateSliderDisplay(this,'light-int-val'); updateLighting()">
-          <span class="value-display" id="light-int-val">2.00</span>
+          <span class="value-display" id="light-int-val">1.00</span>
         </div>
       </div>
 
@@ -955,9 +964,18 @@
       <div class="field">
         <label>환경광</label>
         <div class="field-row">
-          <input type="range" id="ambient-intensity" min="0" max="3" step="0.05" value="0.8"
+          <input type="range" id="ambient-intensity" min="0" max="3" step="0.05" value="0.25"
             oninput="updateSliderDisplay(this,'ambient-val'); updateLighting()">
-          <span class="value-display" id="ambient-val">0.80</span>
+          <span class="value-display" id="ambient-val">0.25</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>스튜디오 반사</label>
+        <div class="field-row">
+          <input type="range" id="env-intensity" min="0" max="3" step="0.05" value="1.0"
+            oninput="updateSliderDisplay(this,'env-val'); updateLighting()">
+          <span class="value-display" id="env-val">1.00</span>
         </div>
       </div>
 
@@ -1143,6 +1161,7 @@
 // ==========================================
 const state = {
   mode: 'flat',          // 'flat' | 'wind' | 'cylinder' | 'swing' | 'wave'
+  paperDetail: 0.5,      // 종이 결 + 모서리 들림 강도 (0~1)
   bgType: 'solid',       // 'solid' | 'gradient' | 'image' | 'video'
   cylAxis: 'x',          // 'x' | 'y'
   windStrength: 0.05,
@@ -1219,10 +1238,15 @@ function initThree() {
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = false;
+  renderer.toneMapping = THREE.NoToneMapping; // 포스터 색 왜곡 방지 — 톤매핑 없이 선형 출력
 
   // 씬
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf0f0f0);
+
+  // 스튜디오 환경광 (소프트박스 반사) + 종이 결 노멀맵
+  scene.environment = buildStudioEnvironment();
+  paperNormalMap = buildPaperNormalMap(512);
 
   // 카메라
   camera = new THREE.PerspectiveCamera(45, 900/600, 0.1, 100);
@@ -1236,10 +1260,10 @@ function initThree() {
   mouse = new THREE.Vector2();
 
   // ─── 조명 ───
-  ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+  ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
   scene.add(ambientLight);
 
-  dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+  dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
   dirLight.castShadow = false;
   scene.add(dirLight);
 
@@ -1295,8 +1319,13 @@ function addPoster(silent) {
   const { mesh, originalPositions } = buildPosterMeshFromParams(params, null);
   const shadowMesh = buildShadowMesh(params);
 
-  posters.push({ mesh, originalPositions, shadowMesh, texture: null, params });
+  // 모서리 들림 계수 — 포스터마다 다르게, 한 모서리는 거의 안 들리게
+  const cornerSeeds = [0, 1, 2, 3].map(() => 0.3 + Math.random() * 0.7);
+  cornerSeeds[Math.floor(Math.random() * 4)] = 0.05;
+
+  posters.push({ mesh, originalPositions, shadowMesh, texture: null, params, cornerSeeds });
   activePosterIndex = posters.length - 1;
+  applyGeometryMode(posters[activePosterIndex]); // 일반 모드 모서리 들림은 생성 직후 한 번 적용해야 보임
 
   renderPosterList();
   syncSlidersToActivePoster();
@@ -1382,6 +1411,97 @@ function syncSlidersToActivePoster() {
 // ==========================================
 // 포스터 메시 빌드
 // ==========================================
+// ==========================================
+// 스튜디오 환경광 — 어두운 방 + 소프트박스 패널을 큐브맵으로 구워 반사에 사용
+// ==========================================
+let paperNormalMap = null;
+let envIntensity   = 1.0;
+
+function buildStudioEnvironment() {
+  const env = new THREE.Scene();
+
+  // 방: 어두운 회색 상자 (안쪽 면)
+  const room = new THREE.Mesh(
+    new THREE.BoxGeometry(24, 24, 24),
+    new THREE.MeshBasicMaterial({ color: 0x1c1c1c, side: THREE.BackSide })
+  );
+  env.add(room);
+
+  // 발광 패널 — 색값 >1 로 HDR 광원 표현
+  function panel(w, h, intensity, pos) {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(intensity), side: THREE.DoubleSide })
+    );
+    m.position.set(pos[0], pos[1], pos[2]);
+    m.lookAt(0, 0, 0);
+    env.add(m);
+  }
+  panel(9, 7,  3.2, [-5,  6,  6]);   // 키: 왼쪽 위 대형 소프트박스
+  panel(1.6, 9, 2.8, [ 7,  1,  4]);  // 창문: 오른쪽 세로 스트립 (유광에 긴 반사)
+  panel(9, 6,  1.0, [ 0, -3,  9]);   // 필: 카메라 뒤 약한 면광
+  panel(4, 2,  2.0, [ 1,  8, -5]);   // 림: 위쪽 뒤
+
+  const pmrem  = new THREE.PMREMGenerator(renderer);
+  const target = pmrem.fromScene(env, 0.03);
+  pmrem.dispose();
+  return target.texture;
+}
+
+// ==========================================
+// 종이 결 노멀맵 — 값 노이즈를 가로로 길게 흐려 섬유 결 생성 → 높이차로 노멀 계산
+// ==========================================
+function buildPaperNormalMap(size) {
+  let h = new Float32Array(size * size);
+  for (let i = 0; i < h.length; i++) h[i] = Math.random();
+
+  // 분리형 박스 블러 (가로 반경 3, 세로 반경 1) × 2회 — 가로 섬유 결
+  function blur(src, rx, ry) {
+    const tmp = new Float32Array(size * size);
+    const out = new Float32Array(size * size);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      let s = 0;
+      for (let k = -rx; k <= rx; k++) s += src[y * size + ((x + k + size) % size)];
+      tmp[y * size + x] = s / (2 * rx + 1);
+    }
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      let s = 0;
+      for (let k = -ry; k <= ry; k++) s += tmp[((y + k + size) % size) * size + x];
+      out[y * size + x] = s / (2 * ry + 1);
+    }
+    return out;
+  }
+  // 미세 결은 화면에서 거의 안 보인다 — 종이답게 읽히는 건 완만한 울퉁불퉁함이라 저주파 위주로 섞는다
+  const fine   = blur(blur(h, 3, 1), 3, 1);
+  const mid    = blur(blur(h, 10, 8), 10, 8);
+  const coarse = blur(blur(h, 28, 28), 28, 28);
+  for (let i = 0; i < h.length; i++) h[i] = fine[i] * 0.15 + mid[i] * 0.35 + coarse[i] * 0.5;
+
+  const data = new Uint8Array(size * size * 4);
+  const k = 40.0; // 기울기 강도 (블러로 진폭이 줄어든 만큼 키움)
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const xl = h[y * size + ((x - 1 + size) % size)], xr = h[y * size + ((x + 1) % size)];
+    const yd = h[((y - 1 + size) % size) * size + x], yu = h[((y + 1) % size) * size + x];
+    let nx = -(xr - xl) * k, ny = -(yu - yd) * k, nz = 1;
+    const len = Math.hypot(nx, ny, nz);
+    nx /= len; ny /= len; nz /= len;
+    const o = (y * size + x) * 4;
+    data[o]     = (nx * 0.5 + 0.5) * 255;
+    data[o + 1] = (ny * 0.5 + 0.5) * 255;
+    data[o + 2] = (nz * 0.5 + 0.5) * 255;
+    data[o + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function buildPosterMeshFromParams(params, existingTexture) {
   const W = params.posterW;
   const H = params.posterH;
@@ -1389,10 +1509,16 @@ function buildPosterMeshFromParams(params, existingTexture) {
   const geo = new THREE.PlaneGeometry(W, H, 50, 50);
   const originalPositions = new Float32Array(geo.attributes.position.array);
 
-  const mat = new THREE.MeshStandardMaterial({
+  // 종이: 클리어코트로 광택 표현 (metalness 는 종이에 맞지 않아 0 고정)
+  const mat = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
-    roughness: 0.3,
+    roughness: 0.6,
     metalness: 0.0,
+    clearcoat: 0.4,
+    clearcoatRoughness: 0.35,
+    envMapIntensity: envIntensity,
+    normalMap: paperNormalMap,
+    normalScale: new THREE.Vector2(1, 1).multiplyScalar(0.35 * state.paperDetail),
     side: THREE.FrontSide,
   });
 
@@ -1670,8 +1796,20 @@ function applyGeometryMode(p) {
   const arr = geo.attributes.position.array;
 
   if (state.mode === 'flat') {
-    for (let i = 0; i < arr.length; i++) {
-      arr[i] = p.originalPositions[i];
+    // 완전 평면 대신 종이답게: 모서리마다 다른 정도로 살짝 들림 + 아주 약한 배부름
+    const W = p.params.posterW, H = p.params.posterH, d = state.paperDetail;
+    const seeds = p.cornerSeeds || [1, 1, 1, 1];
+    for (let i = 0; i < arr.length; i += 3) {
+      const ox = p.originalPositions[i], oy = p.originalPositions[i + 1];
+      const nx = ox / W * 2, ny = oy / H * 2; // -1 ~ 1
+      const cx = Math.max(0, Math.abs(nx) - 0.3) / 0.7;
+      const cy = Math.max(0, Math.abs(ny) - 0.3) / 0.7;
+      const cornerIdx = (nx > 0 ? 1 : 0) + (ny > 0 ? 2 : 0);
+      const lift = Math.pow(cx * cy, 1.8) * seeds[cornerIdx];
+      const bow  = (1 - nx * nx) * (1 - ny * ny);
+      arr[i]     = ox;
+      arr[i + 1] = oy;
+      arr[i + 2] = d * (0.22 * lift + 0.015 * bow);
     }
   } else if (state.mode === 'cylinder') {
     const W      = p.params.posterW;
@@ -1838,6 +1976,14 @@ function updateLighting() {
   );
   dirLight.intensity   = intensity;
   ambientLight.intensity = ambient;
+
+  const envEl = document.getElementById('env-intensity');
+  if (envEl) {
+    envIntensity = parseFloat(envEl.value);
+    posters.forEach(p => {
+      if (p.mesh && p.mesh.material) p.mesh.material.envMapIntensity = envIntensity;
+    });
+  }
 }
 
 // ==========================================
@@ -1916,6 +2062,7 @@ function loadPosterImage(file) {
   const loader = new THREE.TextureLoader();
   loader.load(url, tex => {
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); // 기울였을 때 글자 뭉개짐 방지
     if (p.texture) p.texture.dispose();
     p.texture = tex;
     p.mesh.material.map = tex;
@@ -2287,19 +2434,30 @@ function setPosterFinish(finish) {
   ['matte','satin','gloss'].forEach(f => {
     document.getElementById('finish-' + f).classList.toggle('active', f === finish);
   });
+  // 클리어코트 = 코팅층. 무광은 코팅 없음, 유광은 매끈한 코팅
   const configs = {
-    matte: { roughness: 0.92, metalness: 0.0 },
-    satin: { roughness: 0.45, metalness: 0.05 },
-    gloss: { roughness: 0.08, metalness: 0.18 },
+    matte: { roughness: 0.9,  clearcoat: 0.0, clearcoatRoughness: 0.5  },
+    satin: { roughness: 0.6,  clearcoat: 0.4, clearcoatRoughness: 0.35 },
+    gloss: { roughness: 0.5,  clearcoat: 1.0, clearcoatRoughness: 0.15 },
   };
   const cfg = configs[finish];
   posters.forEach(p => {
     if (p.mesh && p.mesh.material) {
-      p.mesh.material.roughness  = cfg.roughness;
-      p.mesh.material.metalness  = cfg.metalness;
+      p.mesh.material.roughness          = cfg.roughness;
+      p.mesh.material.clearcoat          = cfg.clearcoat;
+      p.mesh.material.clearcoatRoughness = cfg.clearcoatRoughness;
       p.mesh.material.needsUpdate = true;
     }
   });
+}
+
+// 종이 디테일 — 노멀맵 강도 + 일반 모드 모서리 들림
+function setPaperDetail(v) {
+  state.paperDetail = v;
+  posters.forEach(p => {
+    if (p.mesh && p.mesh.material) p.mesh.material.normalScale.set(0.35 * v, 0.35 * v);
+  });
+  if (state.mode === 'flat') applyGeometryModeToAll();
 }
 
 // ==========================================
@@ -2407,25 +2565,39 @@ function exportImage(format) {
   const baseW = card.clientWidth;
   const baseH = card.clientHeight;
   const scale = exportScale;
+  const outW  = baseW * scale;
+  const outH  = baseH * scale;
+
+  // 슈퍼샘플링: 목표 해상도의 2배로 그린 뒤 축소 → 가장자리·하이라이트 계단 제거
+  // 버퍼 한도(텍스처 최대 크기, 4천만 픽셀) 넘으면 1배로
+  const maxDim = renderer.capabilities.maxTextureSize;
+  const ss = (outW * 2 <= maxDim && outH * 2 <= maxDim && outW * outH * 4 <= 40e6) ? 2 : 1;
 
   // CSS 크기는 유지한 채 내부 버퍼만 확대 (updateStyle=false → 화면 깜빡임 없음)
-  if (scale > 1) {
-    renderer.setPixelRatio(1);
-    renderer.setSize(baseW * scale, baseH * scale, false);
-    camera.aspect = baseW / baseH;
-    camera.updateProjectionMatrix();
-  }
-
+  renderer.setPixelRatio(1);
+  renderer.setSize(outW * ss, outH * ss, false);
+  camera.aspect = baseW / baseH;
+  camera.updateProjectionMatrix();
   renderer.render(scene, camera);
 
+  let source = renderer.domElement;
+  if (ss > 1) {
+    const off = document.createElement('canvas');
+    off.width = outW; off.height = outH;
+    const ctx = off.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(renderer.domElement, 0, 0, outW, outH);
+    source = off;
+  }
+
   const dataURL = format === 'png'
-    ? renderer.domElement.toDataURL('image/png')
-    : renderer.domElement.toDataURL('image/jpeg', 0.95);
+    ? source.toDataURL('image/png')
+    : source.toDataURL('image/jpeg', 0.95);
 
   // 버퍼 복원
-  if (scale > 1) {
-    resizeRendererToCard();
-  }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  resizeRendererToCard();
 
   const suffix = scale > 1 ? `_${scale}x` : '';
   const a = document.createElement('a');
@@ -2819,6 +2991,8 @@ function initSliderDisplays() {
     'light-azimuth':     'light-az-val',
     'light-elevation':   'light-el-val',
     'ambient-intensity': 'ambient-val',
+    'env-intensity':     'env-val',
+    'paper-detail':      'paper-detail-val',
     'swing-amp':         'swing-amp-val',
     'swing-speed':       'swing-spd-val',
     'wave-strength':     'wave-str-val',
@@ -2847,7 +3021,6 @@ window.addEventListener('DOMContentLoaded', () => {
   initSliderDisplays();
 
   updateBgSolid(document.getElementById('bg-color').value);
-  updateShadowBlur();
 
   showToast('Poster Mockup Studio 준비 완료');
 });
