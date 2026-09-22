@@ -393,6 +393,33 @@
       display: block;
       width: 100%;
       height: 100%;
+      touch-action: none; /* 포스터 드래그가 페이지 스크롤로 새지 않게 */
+    }
+
+    /* ===== 모바일: 캔버스 위·컨트롤 아래 세로 배치 ===== */
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+        height: 100dvh;
+      }
+      #canvas-area {
+        order: -1; /* DOM 은 사이드바가 먼저지만 화면에선 캔버스가 위 */
+        flex: none;
+        height: 50dvh;
+        border-bottom: 1px solid var(--panel-border);
+      }
+      #sidebar {
+        width: 100%;
+        min-width: 0;
+        flex: 1;
+        border-right: none;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .sidebar-header { display: none; }
+      .section-header { padding: 12px 16px; font-size: 13px; }
+      input[type="range"] { height: 4px; }
+      input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; }
+      #wind-xy-pad { touch-action: none; }
     }
 
     /* ===== 녹화 인디케이터 ===== */
@@ -1219,6 +1246,7 @@ let videoElement = null;
 let raycaster, mouse;
 let isDragging = false;
 let dragPosterIndex = -1;
+let dragPointerId = null;
 let dragStartX = 0, dragStartY = 0;
 let isAltDrag = false;
 
@@ -1283,7 +1311,8 @@ function initThree() {
 
   // 렌더러 크기 맞춤
   resizeRendererToCard();
-  window.addEventListener('resize', resizeRendererToCard);
+  window.addEventListener('resize', () => { resizeRendererToCard(); fitCanvasCard(); });
+  fitCanvasCard();
 
   // 드래그 이벤트 등록
   setupDragInteraction();
@@ -1303,6 +1332,16 @@ function resizeRendererToCard() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+}
+
+// 캔버스 카드가 영역보다 크면 transform 으로 축소 표시.
+// 레이아웃 크기(=렌더 버퍼·내보내기 해상도)는 그대로, 보이는 크기만 줄인다.
+function fitCanvasCard() {
+  const area = document.getElementById('canvas-area');
+  const card = document.getElementById('canvas-card');
+  const pad  = 16;
+  const s = Math.min(1, (area.clientWidth - pad) / card.clientWidth, (area.clientHeight - pad) / card.clientHeight);
+  card.style.transform = s < 1 ? `scale(${s})` : '';
 }
 
 // ==========================================
@@ -1854,9 +1893,13 @@ function applyGeometryMode(p) {
 function setupDragInteraction() {
   const canvas = document.getElementById('three-canvas');
 
-  canvas.addEventListener('mousemove', e => {
+  // 포인터 이벤트 = 마우스·터치 공통. 손가락 두 개면 회전(Alt 드래그와 동일)
+  const activePointers = new Set();
+
+  canvas.addEventListener('pointermove', e => {
+    if (isDragging && e.pointerId !== dragPointerId) return;
     // 호버 커서 처리 (드래그 중 아닐 때)
-    if (!isDragging) {
+    if (!isDragging && e.pointerType === 'mouse') {
       const hit = getPosterUnderMouse(e);
       canvas.style.cursor = hit >= 0 ? 'grab' : 'default';
     }
@@ -1871,8 +1914,8 @@ function setupDragInteraction() {
     if (dragPosterIndex < 0 || dragPosterIndex >= posters.length) return;
     const p = posters[dragPosterIndex];
 
-    if (isAltDrag) {
-      // Alt + 드래그: 회전 조작
+    if (isAltDrag || activePointers.size >= 2) {
+      // Alt + 드래그 또는 두 손가락: 회전 조작
       p.params.tiltY += dx * 0.3;
       p.params.tiltX -= dy * 0.3;
       // 범위 클램핑 (-180~180)
@@ -1896,7 +1939,7 @@ function setupDragInteraction() {
         const el = document.getElementById(id);
         if (el) el.value = val;
       };
-      if (isAltDrag) {
+      if (isAltDrag || activePointers.size >= 2) {
         setSlider('tilt-x', p.params.tiltX);
         setSlider('tilt-y', p.params.tiltY);
         updateSliderDisplay(document.getElementById('tilt-x'), 'tilt-x-val');
@@ -1905,31 +1948,34 @@ function setupDragInteraction() {
     }
   });
 
-  canvas.addEventListener('mousedown', e => {
+  canvas.addEventListener('pointerdown', e => {
+    activePointers.add(e.pointerId);
+    if (isDragging) return; // 두 번째 손가락은 회전 판정에만 쓴다
     const hit = getPosterUnderMouse(e);
     if (hit >= 0) {
       isDragging = true;
       dragPosterIndex = hit;
+      dragPointerId = e.pointerId;
       dragStartX = e.clientX;
       dragStartY = e.clientY;
       isAltDrag = e.altKey;
       canvas.style.cursor = 'grabbing';
+      canvas.setPointerCapture(e.pointerId);
       // 클릭한 포스터 선택
       selectPoster(hit);
     }
   });
 
-  canvas.addEventListener('mouseup', () => {
+  function endDrag(e) {
+    activePointers.delete(e.pointerId);
+    if (e.pointerId !== dragPointerId) return;
     isDragging = false;
     dragPosterIndex = -1;
+    dragPointerId = null;
     canvas.style.cursor = 'default';
-  });
-
-  canvas.addEventListener('mouseleave', () => {
-    isDragging = false;
-    dragPosterIndex = -1;
-    canvas.style.cursor = 'default';
-  });
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
 
   // Alt 키 상태 추적
   window.addEventListener('keydown', e => {
@@ -2375,15 +2421,17 @@ function setupWindXYPad() {
     document.getElementById('wind-oy-val').textContent = state.windOriginY.toFixed(2);
   }
 
-  pad.addEventListener('mousedown', e => {
+  pad.addEventListener('pointerdown', e => {
     padDragging = true;
+    pad.setPointerCapture(e.pointerId);
     setFromEvent(e);
     e.stopPropagation(); // 포스터 드래그와 충돌 방지
   });
-  window.addEventListener('mousemove', e => {
+  pad.addEventListener('pointermove', e => {
     if (padDragging) setFromEvent(e);
   });
-  window.addEventListener('mouseup', () => { padDragging = false; });
+  pad.addEventListener('pointerup',     () => { padDragging = false; });
+  pad.addEventListener('pointercancel', () => { padDragging = false; });
 }
 
 function updateWindXYDot() {
@@ -2531,6 +2579,7 @@ function applyCanvasSize() {
   camera.aspect = newW / newH;
   camera.updateProjectionMatrix();
 
+  fitCanvasCard();
   updateExportResLabel();
   showToast(`캔버스: ${newW} × ${newH}`);
 }
@@ -3021,6 +3070,14 @@ window.addEventListener('DOMContentLoaded', () => {
   initSliderDisplays();
 
   updateBgSolid(document.getElementById('bg-color').value);
+
+  // 모바일: 스크롤 줄이려고 포스터·모드 외 섹션은 접어 둔다
+  if (window.matchMedia('(max-width: 768px)').matches) {
+    ['sec-bg', 'sec-light', 'sec-export', 'sec-auto', 'sec-canvas'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('collapsed');
+    });
+  }
 
   showToast('Poster Mockup Studio 준비 완료');
 });
